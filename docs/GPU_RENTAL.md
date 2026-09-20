@@ -43,14 +43,12 @@ Script tự làm hết: kiểm tra GPU + Internet → cài thư viện thiếu �
 
 **Tạo lại gói zip** (khi bạn sửa code, chạy lại lệnh này rồi upload lại dataset):
 ```powershell
-$root = (Get-Location).Path
-$stage = "$root\dist\envi-stream-translator"
-Remove-Item -Recurse -Force "$root\dist" -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
-robocopy $root $stage /E /XD models out .git __pycache__ .playwright-mcp .venv venv dist /XF *.log *.zip /NFL /NDL /NJH /NJS /NP | Out-Null
-Compress-Archive -Path $stage -DestinationPath "$root\dist\envi-stream-translator-kaggle.zip" -Force
-Remove-Item -Recurse -Force $stage
+python scripts/make_kaggle_zip.py
 ```
+> ⚠️ **ĐỪNG dùng `Compress-Archive` của PowerShell.** Nó ghi tên file trong zip bằng dấu `\`
+> (vd `envi-stream-translator\app\server.py`), nhưng chuẩn ZIP yêu cầu `/`, nên Kaggle từ chối:
+> *"... contains a forbidden character in name ('\')"*. Script Python ở trên ghi đúng `/`
+> và tự kiểm tra lại (in ra `Entry co dau '\' (LOI Kaggle): 0`).
 
 > Kaggle **chỉ trừ giờ GPU khi cell đang chạy** — đóng notebook là không tốn gì.
 > Phiên kéo dài ~9–12 giờ; hết thì chạy lại cell 2 là có URL mới.

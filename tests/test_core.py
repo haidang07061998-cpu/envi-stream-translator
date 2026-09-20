@@ -694,6 +694,28 @@ class TestClientAssets(unittest.TestCase):
         self.assertTrue(m._looks_like_repo(ROOT))
         self.assertFalse(m._looks_like_repo(os.path.join(ROOT, "src")))
 
+    def test_zip_kaggle_dung_chuan_zip(self):
+        """LOI THAT: Compress-Archive cua PowerShell ghi '\\' vao ten entry -> Kaggle tu choi.
+
+        Test nay tao lai goi zip bang scripts/make_kaggle_zip.py (dung Python zipfile,
+        ghi '/') va khang dinh KHONG con dau '\\' nao.
+        """
+        import zipfile
+        p = os.path.join(ROOT, "scripts", "make_kaggle_zip.py")
+        r = subprocess.run([sys.executable, p], capture_output=True, text=True,
+                           cwd=ROOT)
+        self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-400:])
+        self.assertIn("Entry co dau '\\' (LOI Kaggle): 0", r.stdout)
+        zpath = os.path.join(ROOT, "dist", "envi-stream-translator-kaggle.zip")
+        self.assertTrue(os.path.exists(zpath))
+        with zipfile.ZipFile(zpath) as z:
+            names = z.namelist()
+            bad = [x for x in names if "\\" in x]
+            self.assertEqual(bad, [], f"entry dung dau '\\': {bad[:3]}")
+            self.assertTrue(any(x.endswith("app/server.py") for x in names))
+            self.assertFalse(any("/models/" in x for x in names),
+                             "khong duoc dong goi models/ (1.7GB)")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
