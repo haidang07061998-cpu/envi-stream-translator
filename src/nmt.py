@@ -94,12 +94,18 @@ class RemoteNMT:
     - Giao dien giong NMTTranslator: translate(text, accurate) -> (vi, ms)
     """
 
-    def __init__(self, url, timeout=20.0):
+    def __init__(self, url, timeout=20.0, cache_size=200):
         self.url = url.rstrip("/")
         self.timeout = float(timeout)
         self.calls = 0
         self.errors = 0
         self.last_error = None
+        # Cache tai MAY: cau lap lai (chao hoi, xac nhan, thuat ngu) khong ton
+        # request len GPU -> tiet kiem CA TIEN (tra theo giay) LAN do tre.
+        self._cache = {}
+        self._order = []
+        self.cache_size = int(cache_size)
+        self.cache_hits = 0
 
     @property
     def engine(self) -> str:
@@ -108,24 +114,48 @@ class RemoteNMT:
     def set_glossary(self, terms):
         return None                      # thuat ngu da duoc ep o phia may chu
 
+    def _get(self, key):
+        if key in self._cache:
+            self.cache_hits += 1
+            self._order.remove(key)
+            self._order.append(key)
+            return self._cache[key]
+        return None
+
+    def _put(self, key, val):
+        self._cache[key] = val
+        self._order.append(key)
+        while len(self._order) > self.cache_size:
+            old = self._order.pop(0)
+            self._cache.pop(old, None)
+
     def translate(self, texts, accurate: bool = False):
         import requests
         single = isinstance(texts, str)
         items = [texts] if single else list(texts)
         out, total = [], 0.0
         for t in items:
-            if not (t or "").strip():
+            t = (t or "").strip()
+            if not t:
                 out.append("")
                 continue
+            key = (t, bool(accurate))
+            hit = self._get(key)
+            if hit is not None:
+                out.append(hit)
+                continue                  # khong goi GPU
             try:
                 r = requests.post(f"{self.url}/translate",
                                   json={"text": t, "accurate": bool(accurate)},
                                   timeout=self.timeout)
                 r.raise_for_status()
                 j = r.json()
-                out.append(j.get("vi", "") or "")
+                vi = j.get("vi", "") or ""
+                out.append(vi)
                 total += float(j.get("ms", 0.0) or 0.0)
                 self.calls += 1
+                if vi:
+                    self._put(key, vi)
             except Exception as e:
                 self.errors += 1
                 self.last_error = f"{type(e).__name__}: {e}"
@@ -134,7 +164,8 @@ class RemoteNMT:
 
     def stats(self) -> dict:
         return {"engine": self.engine, "calls": self.calls, "errors": self.errors,
-                "last_error": self.last_error, "remote": True}
+                "last_error": self.last_error, "remote": True,
+                "cache": len(self._cache), "cache_hits": self.cache_hits}
 
 
 def build_nmt(model_id="vinai/vinai-translate-en2vi-v2", src="en_XX", tgt="vi_VN",

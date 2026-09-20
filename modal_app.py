@@ -36,6 +36,29 @@ GPU = os.getenv("MODAL_GPU", "T4")
 # Model ASR: GPU nen dung ban tot nhat
 ASR_MODEL = os.getenv("MODAL_ASR_MODEL", "large-v3-turbo")
 
+# ---------------------------------------------------------------------------
+# TINH TIEN (doc ky de khong bi bat ngo):
+#
+#   Modal la SERVERLESS, tra theo TUNG GIAY. Ban CHI bi tinh tien khi container
+#   dang chay. Khong co request nao -> khong co container -> KHONG tinh tien.
+#   `modal deploy` KHONG lam phat sinh tien (chi build image 1 lan, rat nhe).
+#
+#   NHUNG: sau request cuoi, container van "thuc" them mot luc de lan sau tra loi
+#   nhanh (goi la scaledown_window) - VA THOI GIAN NAM DO VAN BI TINH TIEN
+#   (Modal docs: "you will be billed for any resources used while the container
+#   is idle"). Mac dinh cua Modal la 60 giay; cho phep 2s .. 20 phut.
+#
+#   Voi T4 ($0.000164/giay):
+#       60 giay thuc  = ~$0.010  (1 xu) moi lan tat may
+#       300 giay thuc = ~$0.049  (5 xu)
+#   => De 60s la can bang tot. Muon tiet kiem toi da thi dat MODAL_KEEPWARM=2.
+#
+#   $30 mien phi/thang = 30 / 0.59 = ~50 GIO GPU T4 thuc te.
+#   1 buoi demo 2 gio noi lien tuc = 2 x $0.59 = $1.18  ->  trong muc mien phi.
+# ---------------------------------------------------------------------------
+KEEPWARM = int(os.getenv("MODAL_KEEPWARM", "60"))     # giay; Modal cho phep 2..1200
+KEEPWARM = max(2, min(KEEPWARM, 1200))
+
 app = modal.App(APP_NAME)
 
 # --- Image: copy code + cai dependencies ------------------------------------
@@ -75,7 +98,12 @@ vol = modal.Volume.from_name("envi-models", create_if_missing=True)
     gpu=GPU,
     volumes={MODELS_DIR: vol},
     timeout=3600,
-    scaledown_window=300,      # giu container 5 phut sau request cuoi -> demo lien mach
+    # scaledown_window: giu container "thuc" bao lau sau request cuoi.
+    #   - Dai  -> lan goi sau tra loi ngay, NHUNG tinh tien ca luc ngoi khong
+    #   - Ngan -> tiet kiem, nhung request sau phai "cold start" (tai model lai, cham)
+    # min_containers=0 => KHONG bao gio giu container chay khi ranh => khong dot tien
+    scaledown_window=KEEPWARM,
+    min_containers=0,
     max_containers=1,          # 1 container de khong nhan doi chi phi
 )
 @modal.concurrent(max_inputs=16)     # nhieu nguoi nghe cung luc
@@ -120,5 +148,8 @@ def main():
 #                                       roi them secrets=[modal.Secret.from_name("hf")] vao @app.function
 # 3) Het $30 mien phi                -> xem muc "Credit grants for academics" (toi $10k cho sinh vien)
 # 4) Muon dung GPU khac              -> set MODAL_GPU=L4 (hoac A10G/A100) truoc khi deploy
-# 5) Container ngu sau 5 phut        -> tang scaledown_window (ton tien hon khi idle)
+# 5) Container ngu sau 60s (mac dinh)  -> set MODAL_KEEPWARM=300 truoc khi deploy
+#                                       neu muon demo lien mach (ton them ~4 xu/lan tat)
 # 6) Do tre cao vi xa                -> Modal cho chon region: them region="ap-..." neu can
+# 7) Muon CHAC CHAN khong bi tinh tien -> dat MODAL_KEEPWARM=2 (tat gan nhu ngay)
+#    va trong Modal Dashboard > Settings > Budgets dat tran chi tieu

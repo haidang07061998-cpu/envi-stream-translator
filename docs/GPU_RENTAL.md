@@ -139,3 +139,60 @@ Thuê GPU nghĩa là **audio/text rời khỏi máy bạn**. Với chế độ *
 
 **Gợi ý:** bắt đầu bằng **Kaggle** để đo tốc độ/độ chính xác (miễn phí), rồi dùng
 **Modal academic grant** nếu cần một URL public cho hội đồng xem trực tiếp.
+
+---
+
+## 8. Tính tiền như thế nào — chỗ dễ hiểu sai nhất
+
+**Nguyên tắc chung: tiền chỉ tính khi GPU ĐANG CHẠY. Cài đặt / upload / deploy = 0 đồng.**
+Nhưng "đang chạy" định nghĩa khác nhau ở từng nơi — và có một cái bẫy thật.
+
+| Nền tảng | Bắt đầu tính từ lúc nào | Dừng tính khi nào | Có tính lúc rảnh không? |
+|---|---|---|---|
+| **Kaggle** | Khi bạn **bấm Run** một notebook có bật GPU | Khi bấm **Stop** / đóng phiên / hết phiên | ❌ Không. Chỉ trừ vào **30 giờ/tuần** |
+| **Colab** | Khi bật GPU và chạy cell | Khi ngắt phiên; tự ngắt sau ~90 phút rảnh | ❌ Không |
+| **Modal** | Khi **có request** đi vào (serverless) | Khi container tắt — **sau `scaledown_window` giây kể từ request cuối** | ⚠️ **CÓ**, trong khoảng `scaledown_window` (mặc định 60s) |
+| **Vast.ai / RunPod** | Ngay khi bạn **bật pod** | Chỉ khi bạn **tự Stop/Destroy** | ⚠️ **CÓ, liên tục** — quên tắt là tính tiền cả đêm |
+| **Google Cloud / AWS** | Khi VM ở trạng thái running | Khi **stop** (nhưng đĩa vẫn tính tiền) | ⚠️ CÓ khi running; stop rồi vẫn tốn tiền đĩa |
+
+### Modal — con số cụ thể
+
+Modal ghi rõ trong [docs](https://modal.com/docs/guide/cold-start):
+> *"Increasing the `scaledown_window` reduces the chance that subsequent requests will require
+> a cold start, **although you will be billed for any resources used while the container is
+> idle**."*
+
+- `modal deploy` **không** làm phát sinh tiền — chỉ build image 1 lần (rất nhẹ).
+- Chỉ khi bạn **gọi** vào (nói một câu → 1 request) thì container mới bật → **bắt đầu tính theo giây**.
+- Hết request, container còn "thức" thêm `scaledown_window` giây để lần sau trả lời nhanh
+  → **khoảng đó vẫn bị tính tiền**. Mặc định Modal = **60 giây**; cho phép **2s … 20 phút**.
+- Trong `modal_app.py` tôi đã để `min_containers=0` ⇒ **không bao giờ** giữ container chạy khi rảnh,
+  nên không có chuyện "để đó cả tháng vẫn bị trừ tiền".
+
+**Chi phí T4 ($0.000164/giây):**
+
+| Việc | Thời gian tính tiền | Tiền |
+|---|---|---|
+| Dịch 1 câu | ~0.2s | ~$0.00003 |
+| Một lần tắt máy (idle 60s) | 60s | ~$0.010 (1 xu) |
+| Nếu để `MODAL_KEEPWARM=300` | 300s | ~$0.049 (5 xu) |
+| **1 buổi demo 2 giờ nói liên tục** | 2 giờ | **~$1.18** |
+| **$30 miễn phí/tháng** | — | **~50 giờ T4** |
+
+### Cách tự bảo vệ khỏi hoá đơn bất ngờ
+
+1. **Modal**: đặt `MODAL_KEEPWARM=2` (tắt gần như ngay) và vào
+   *Dashboard → Settings → Budgets* đặt **trần chi tiêu**. Hết $30 free là dừng, không tự trừ thêm.
+2. **Vast.ai / RunPod**: **luôn bấm Stop/Destroy** sau khi dùng. Đặt nhắc nhở trên điện thoại.
+   RunPod còn tính phí **lưu trữ** cho pod đã stop (~$0.10/GB/tháng) → dùng xong thì **Destroy**.
+3. **Kaggle/Colab**: không có rủi ro tiền, chỉ hết quota tuần.
+4. **Hệ thống này đã tự tiết kiệm**: chế độ GPU từ xa có **cache ở máy** — câu lặp lại
+   ("Cảm ơn", "Vâng", thuật ngữ) **không gửi request** lên GPU, nên không tốn tiền cho câu trùng.
+
+### Với chế độ hybrid (`NMT_REMOTE_URL`) thì tính tiền ra sao?
+
+- **Chỉ gửi request khi có câu cần dịch.** Bạn im lặng → không có request → Modal scale to zero → **không tính tiền**.
+- Nói liên tục trong 1 giờ → container thức liên tục → tính **đúng 1 giờ GPU**.
+- Nói thưa (1 câu mỗi 10 phút) → mỗi câu làm container thức thêm `scaledown_window`
+  → nếu để 60s thì mỗi câu tốn ~1 xu, 6 câu/giờ ≈ **$0.06/giờ** — vẫn rẻ, nhưng nếu dùng
+  rất thưa thì nên đặt `MODAL_KEEPWARM=2`.

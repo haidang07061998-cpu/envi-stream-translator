@@ -94,6 +94,25 @@ class TestRemoteNMT(unittest.TestCase):
     def test_set_glossary_khong_loi(self):
         RemoteNMT(self.url).set_glossary({"a": "b"})     # phai im lang, khong nem
 
+    def test_cache_tiet_kiem_request_len_gpu(self):
+        """Cau lap lai khong duoc goi GPU lan 2 -> tiet kiem tien (tra theo giay)."""
+        n = RemoteNMT(self.url)
+        vi1, _ = n.translate("Thank you")
+        vi2, _ = n.translate("Thank you")
+        self.assertEqual(vi1, vi2)
+        self.assertEqual(n.calls, 1, "chi duoc goi GPU 1 lan")
+        self.assertEqual(n.cache_hits, 1)
+        self.assertEqual(len(_Handler.received), 1)
+        # accurate khac -> key khac -> goi lai (khong dung nham ban live)
+        n.translate("Thank you", accurate=True)
+        self.assertEqual(n.calls, 2)
+
+    def test_cache_co_tran(self):
+        n = RemoteNMT(self.url, cache_size=2)
+        for s in ("a", "b", "c"):
+            n.translate(s)
+        self.assertLessEqual(len(n._cache), 2)
+
 
 class TestBuildNmt(unittest.TestCase):
     """build_nmt() la diem vao duy nhat: co NMT_REMOTE_URL thi dung GPU tu xa."""
