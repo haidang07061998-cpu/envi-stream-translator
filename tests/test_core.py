@@ -446,6 +446,16 @@ class TestConfig(unittest.TestCase):
         # CPU = 1: do thuc te VinAI fp32 beam=2 ton ~2-3 phut/cau tren CPU
         self.assertEqual(c.resolve_final_beams(False), 1)
 
+    def test_duong_cuda_san_sang(self):
+        """May thue GPU: code phai tu chon cau hinh CUDA ma khong can sua gi."""
+        c = AppConfig()
+        self.assertEqual(c.resolve_compute(True), "int8_float16")
+        self.assertEqual(c.resolve_compute(False), "int8")
+        self.assertEqual(os.path.basename(c.resolve_asr_model(True)), "large-v3-turbo")
+        # ASR_COMPUTE ep tay thi phai duoc ton trong
+        with mock.patch.dict(os.environ, {"ASR_COMPUTE": "float16"}, clear=False):
+            self.assertEqual(AppConfig().resolve_compute(True), "float16")
+
 
 # --------------------------------------------------------------------- 8. metrics
 class TestMetrics(unittest.TestCase):

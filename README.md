@@ -140,6 +140,8 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 | `MODE` | `translate` | `translate` (EN→VI) hoặc `transcribe` (chỉ EN) |
 | `ASR_MODEL` | — | ép model ASR; nếu không đặt: GPU→`large-v3-turbo`, CPU→`tiny.en` |
 | `ASR_MODEL_OFFLINE` | `tiny.en` | model dùng khi chỉ có CPU |
+| `ASR_DEVICE` | `auto` | `cuda` / `cpu` (máy thuê GPU có thể ép) |
+| `ASR_COMPUTE` | `auto` | `int8_float16` (cuda) / `int8` (cpu); ép `float16` nếu GPU không hỗ trợ int8 |
 | `PARTIAL_EVERY` | `0.8` | nhịp hiện chữ trực tiếp (giây) |
 | `FINAL_SILENCE` | `0.8` | im lặng bao lâu thì chốt câu |
 | `MAX_SEG` | `8.0` | ép chốt câu nếu nói liên tục |

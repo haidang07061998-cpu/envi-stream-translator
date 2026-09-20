@@ -177,6 +177,10 @@ class AppConfig:
         if os.getenv("ASR_MODEL"):
             self.asr_model = os.getenv("ASR_MODEL")
         self.asr_model_offline = _env_str("ASR_MODEL_OFFLINE", self.asr_model_offline)
+        # May thue GPU: co the ep thiet bi / kieu tinh toan (vd ASR_DEVICE=cuda,
+        # ASR_COMPUTE=float16 khi GPU khong ho tro int8)
+        self.asr_device = _env_str("ASR_DEVICE", self.asr_device)
+        self.asr_compute = _env_str("ASR_COMPUTE", self.asr_compute)
         self.nmt_model = _env_str("NMT_MODEL", self.nmt_model)
         self.ct2_dir = _env_str("CT2_EN2VI", self.ct2_dir)
 

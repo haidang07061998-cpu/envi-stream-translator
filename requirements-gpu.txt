@@ -3,7 +3,15 @@
 #   pip install -r requirements.txt
 #   pip install -r requirements-gpu.txt
 #
-# Luu y: ban cu de dong "--index-url .../cu121" NGAY GIUA requirements.txt nen moi
+# Luu y 1: ban cu de dong "--index-url .../cu121" NGAY GIUA requirements.txt nen moi
 # may CPU cung keo ban CUDA 12.1 (nang ~2.5GB, de loi). Gio tach rieng file nay.
+#
+# Luu y 2: neu sau khi cai ma `python -c "import torch;print(torch.cuda.is_available())"`
+# van tra ve False (pip da chon ban CPU tren PyPI), hay chi dinh ro ban CUDA:
+#   pip install --force-reinstall torch==2.1.2+cu121 --index-url https://download.pytorch.org/whl/cu121
+# (thay 2.1.2 bang phien ban ban muon; xem danh sach tai download.pytorch.org/whl/cu121)
+#
+# Luu y 3: KHONG can cai ctranslate2 cho GPU - duong CT2 dang MAC DINH TAT vi da do
+# duoc la sinh van ban lap vo nghia voi VinAI en2vi-v2.
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch>=2.2.0
