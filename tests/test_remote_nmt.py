@@ -131,8 +131,16 @@ class TestBuildNmt(unittest.TestCase):
     """build_nmt() la diem vao duy nhat: co NMT_REMOTE_URL thi dung GPU tu xa."""
 
     def test_mac_dinh_khong_co_url(self):
+        """Khong co env VA khong co gpu_url.txt -> rong (dich tai may).
+
+        Phai tro _BASE vao thu muc tam, neu khong se doc nham gpu_url.txt that cua repo.
+        """
+        import src.config as cfg
+        import tempfile
         env = {k: v for k, v in os.environ.items() if k != "NMT_REMOTE_URL"}
-        with mock.patch.dict(os.environ, env, clear=True):
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cfg, "_BASE", d):
             self.assertEqual(remote_nmt_url(), "")
 
     def test_co_url_thi_tra_ve_remote(self):
@@ -183,6 +191,29 @@ class TestGpuUrlConfig(unittest.TestCase):
              mock.patch.dict(os.environ, env, clear=True), \
              mock.patch.object(cfg, "_BASE", d):
             self.assertEqual(cfg.resolve_nmt_remote(), "")
+
+    def test_chiu_duoc_bom_va_dong_rac(self):
+        """LOI THAT: Notepad/PowerShell ghi BOM (\\ufeff) -> dong chu thich bi coi la URL.
+
+        Da gap that: 'InvalidURL: Failed to parse: \\ufeff# Dia chi may GPU...'
+        """
+        import src.config as cfg
+        import tempfile
+        env = {k: v for k, v in os.environ.items() if k != "NMT_REMOTE_URL"}
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cfg, "_BASE", d):
+            p = os.path.join(d, cfg.GPU_URL_FILE)
+            with open(p, "w", encoding="utf-8-sig") as f:      # co BOM
+                f.write("# ghi chu tieng Viet co dau\n")
+                f.write("https://bom-test.trycloudflare.com/\n")
+            self.assertEqual(cfg.resolve_nmt_remote(),
+                             "https://bom-test.trycloudflare.com")
+            # dong rac khong bat dau bang http -> phai bo qua, khong tra ve rac
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("ghi chu lung tung\nhttps://sau-rac.trycloudflare.com\n")
+            self.assertEqual(cfg.resolve_nmt_remote(),
+                             "https://sau-rac.trycloudflare.com")
 
 
 class TestCheckRemote(unittest.TestCase):

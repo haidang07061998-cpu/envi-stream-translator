@@ -91,13 +91,18 @@ def resolve_nmt_remote() -> str:
     if url:
         return url.rstrip("/")
 
+    # LUU Y: doc bang "utf-8-sig" de tu bo BOM. Notepad va PowerShell
+    # (Set-Content -Encoding UTF8) deu ghi BOM vao dau file; neu khong bo thi dong
+    # chu thich dau tien bi coi la URL -> loi "InvalidURL: Failed to parse".
     p = os.path.join(_BASE, GPU_URL_FILE)
     if os.path.isfile(p):
         try:
-            with open(p, encoding="utf-8") as f:
+            with open(p, encoding="utf-8-sig") as f:
                 for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
+                    line = line.strip().lstrip("\ufeff").strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("http"):        # bo qua dong rac
                         return line.rstrip("/")
         except OSError:
             pass
@@ -105,12 +110,12 @@ def resolve_nmt_remote() -> str:
     p = os.path.join(_BASE, ".env")
     if os.path.isfile(p):
         try:
-            with open(p, encoding="utf-8") as f:
+            with open(p, encoding="utf-8-sig") as f:
                 for line in f:
-                    line = line.strip()
+                    line = line.strip().lstrip("\ufeff").strip()
                     if line.lower().startswith(GPU_URL_ENV.lower() + "="):
                         v = line.split("=", 1)[1].strip().strip("'\"")
-                        if v:
+                        if v.startswith("http"):
                             return v.rstrip("/")
         except OSError:
             pass
