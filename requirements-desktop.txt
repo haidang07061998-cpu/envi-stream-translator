@@ -1,0 +1,17 @@
+# requirements-desktop.txt - APP DESKTOP offline: nghe EN -> sub EN -> sub VI -> TXT/SRT/VTT
+# Cai: pip install -r requirements-desktop.txt
+#
+# Chi can CPU. Khong can server/redis/qrcode/gradio.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2.0
+faster-whisper>=1.0.0
+transformers>=4.40.0
+sentencepiece>=0.2.0
+numpy>=1.26.0
+scipy>=1.11.0
+soundfile>=0.12.0
+librosa
+sounddevice>=0.4.6
+soundcard>=2.0.0
+# Tuy chon tang toc NMT (nhanh 4-5x, RAM /4): chay scripts/convert_nmt_ct2.py 1 lan
+ctranslate2>=3.24.0

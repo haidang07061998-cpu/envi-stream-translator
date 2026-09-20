@@ -1,0 +1,42 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Redis: caption luu dang LIST + pub/sub cho fan-out => scale nhieu replica
+      # van khong mat caption va nguoi nghe van nhan duoc realtime.
+      REDIS_URL: redis://redis:6379/0
+      SERVER_HOST: http://localhost
+      # Doi sang "1" cho may hop mat (offline 100%, khong goi cloud):
+      # OFFLINE: "1"
+      # CONFIDENTIAL: "1"
+      # ASR_MODEL: tiny.en
+    deploy:
+      replicas: 3
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports: ["8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 180s        # lan dau phai tai model (1-2 phut)
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    ports: ["80:80"]
+    depends_on: [api]

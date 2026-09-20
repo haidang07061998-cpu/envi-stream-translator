@@ -1,0 +1,31 @@
+# --- model & du lieu nang (tai lai bang scripts/download_offline_models.py) ---
+models/
+*.bin
+*.onnx
+*.dsp
+out/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+_t_check.js
+
+# --- log / loi chay ---
+*.log
+mic_error.log
+server.log
+
+# --- he dieu hanh / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# --- bao cao sinh tu dong (giu lai ban nguon) ---
+!SAYDI_AI_RESEARCH_REPORT.md

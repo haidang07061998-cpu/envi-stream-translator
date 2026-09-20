@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>EN-VI Tab Translator - offscreen audio worker</title>
+</head>
+<body>
+  <!--
+    Offscreen document: KHONG hien thi UI, chi ton tai de co DOM/MediaStream/AudioContext.
+    - nhan streamId tu bg.js (chrome.tabCapture.getMediaStreamId)
+    - getUserMedia(chromeMediaSource:'tab') -> PCM int16 16kHz mono -> WebSocket /ws/stream
+    - phat lai audio tab ra loa (vi Chrome mute tab khi bi capture)
+    Script phai la file ngoai: CSP cua MV3 cam inline script.
+  -->
+  <p id="status">offscreen ready</p>
+  <script src="offscreen.js"></script>
+</body>
+</html>

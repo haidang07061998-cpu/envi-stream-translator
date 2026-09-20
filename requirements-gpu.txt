@@ -1,0 +1,9 @@
+# requirements-gpu.txt - CHI dung khi co GPU NVIDIA (CUDA 12.1).
+# Cai SAU requirements.txt de ghi de torch CPU bang torch CUDA:
+#   pip install -r requirements.txt
+#   pip install -r requirements-gpu.txt
+#
+# Luu y: ban cu de dong "--index-url .../cu121" NGAY GIUA requirements.txt nen moi
+# may CPU cung keo ban CUDA 12.1 (nang ~2.5GB, de loi). Gio tach rieng file nay.
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch>=2.2.0

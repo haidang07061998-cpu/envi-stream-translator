@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "EN-VI Tab Translator (live caption)",
+  "version": "0.2.0",
+  "description": "Bat audio tab Google Meet / Zoom web / Teams web / YouTube, gui PCM 16kHz mono ve backend EN-VI de hien live caption.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "EN-VI Tab Translator"
+  },
+  "background": {
+    "service_worker": "bg.js"
+  }
+}

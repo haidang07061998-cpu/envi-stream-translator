@@ -1,0 +1,38 @@
+# requirements.txt - BOI CANH CHUNG (CPU-safe, chay duoc ngay tren Windows/Linux).
+# GPU NVIDIA: cai them  pip install -r requirements-gpu.txt
+# May hop mat / offline:  pip install -r requirements-desktop.txt
+
+# --- ASR: Whisper ---
+faster-whisper>=1.0.0
+# --- NMT: VinAI en2vi-v2 (HuggingFace) + duong nhanh CTranslate2 int8 ---
+transformers>=4.40.0
+sentencepiece>=0.2.0
+tokenizers
+accelerate
+ctranslate2>=3.24.0
+# --- torch: ban mac dinh tren PyPI (CPU tren Windows). Xem requirements-gpu.txt ---
+torch>=2.2.0
+# --- audio ---
+numpy>=1.26.0
+scipy>=1.11.0
+soundfile>=0.12.0
+librosa
+sounddevice>=0.4.6
+soundcard>=2.0.0          # WASAPI: mic + loopback (am thanh he thong) tren Windows
+# --- TTS giong Viet ---
+edge-tts>=2.0.0           # online (nhanh, tu nhien)
+piper-tts>=1.2.0          # offline 100%
+pyttsx3>=2.90             # offline fallback SAPI5
+# --- server ---
+fastapi
+uvicorn[standard]
+websockets
+python-multipart
+# --- phong hop / QR / scale ---
+qrcode[pil]
+redis
+# --- demo / danh gia ---
+gradio>=4.0.0
+jiwer
+sacrebleu
+locust

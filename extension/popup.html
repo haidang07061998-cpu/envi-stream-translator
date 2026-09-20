@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <title>EN-VI Tab Translator</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #151d33;
+      --line: #253154;
+      --text: #e8eeff;
+      --muted: #93a4cc;
+      --blue: #4f8bff;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      width: 340px;
+      background: var(--bg);
+      color: var(--text);
+      font: 12px/1.45 system-ui, "Segoe UI", Roboto, sans-serif;
+      padding: 10px;
+    }
+    header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .brand { font-weight: 800; font-size: 13px; letter-spacing: .2px; }
+    .brand span { color: var(--muted); font-weight: 600; }
+    .pill {
+      margin-left: auto; padding: 3px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 800; border: 1px solid var(--line); color: var(--muted);
+      background: var(--panel); white-space: nowrap;
+    }
+    .pill.on { color: #04120a; background: var(--green); border-color: var(--green); }
+    .pill.warn { color: #1a1205; background: var(--amber); border-color: var(--amber); }
+    .pill.err { color: #fff; background: var(--red); border-color: var(--red); }
+
+    label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin: 0 0 3px; }
+    input, select {
+      width: 100%; background: var(--panel); color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
+      font: inherit; outline: none;
+    }
+    input:focus, select:focus { border-color: var(--blue); }
+    input[readonly] { color: var(--muted); }
+    .field { margin-bottom: 8px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .row3 { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+
+    .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 0; }
+    button {
+      font: inherit; font-weight: 700; cursor: pointer;
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--line); border-radius: 8px; padding: 8px 6px;
+    }
+    button:hover { border-color: var(--blue); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.primary { background: var(--green); color: #04120a; border-color: var(--green); grid-column: 1 / -1; }
+    button.danger { background: #2a1620; color: #ffb4b4; border-color: #5b2233; }
+    button.ghost { background: transparent; }
+    button.wide { grid-column: 1 / -1; }
+    #copy { padding: 6px 10px; white-space: nowrap; }
+
+    .hint { color: var(--muted); font-size: 10px; margin: 4px 0; min-height: 13px; word-break: break-word; }
+    .logwrap {
+      background: #070c18; border: 1px solid var(--line); border-radius: 8px;
+      margin-top: 6px;
+    }
+    .log {
+      height: 140px; overflow-y: auto; padding: 6px 8px;
+      font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; line-height: 1.4;
+    }
+    .log .l { margin-bottom: 3px; word-break: break-word; white-space: pre-wrap; }
+    .log .en { color: #7dd3fc; }
+    .log .vi { color: #86efac; }
+    .log .server { color: #c4b5fd; }
+    .log .error { color: #ff9b9b; }
+    .log .warn { color: #fcd34d; }
+    .log .info, .log .ws { color: var(--muted); }
+    .log .session { color: #93c5fd; }
+    footer { color: var(--muted); font-size: 10px; margin-top: 6px; }
+    a { color: var(--blue); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">EN &rarr; VI <span>Tab Translator</span></div>
+    <div id="pill" class="pill">chua chay</div>
+  </header>
+
+  <div class="field">
+    <label for="base">Server backend</label>
+    <input id="base" type="text" spellcheck="false" placeholder="http://localhost:8000">
+  </div>
+
+  <div class="row field">
+    <div>
+      <label for="pin">PIN phong (tuy chon)</label>
+      <input id="pin" type="password" spellcheck="false" placeholder="de trong neu khong co">
+    </div>
+    <div>
+      <label for="mode">Che do</label>
+      <select id="mode">
+        <option value="translate">Dich EN&rarr;VI</option>
+        <option value="transcribe">Chi nghe EN</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="btns">
+    <button id="start" class="primary" type="button">Bat dau dich tab nay</button>
+    <button id="stop" class="danger" type="button">Dung</button>
+    <button id="open" type="button">Mo trang phong</button>
+    <button id="create" type="button">Tao phong moi</button>
+    <button id="health" class="ghost wide" type="button">Kiem tra server (/health)</button>
+  </div>
+
+  <div class="field">
+    <label for="link">Link phong (nguoi nghe mo de xem caption)</label>
+    <div class="row3">
+      <input id="link" type="text" readonly placeholder="(chua co phong)">
+      <button id="copy" class="ghost" type="button">Copy</button>
+    </div>
+  </div>
+
+  <div id="healthLine" class="hint">&mdash;</div>
+  <div class="logwrap"><div id="log" class="log"></div></div>
+  <footer>Bat tab Meet/Zoom/Teams/YouTube &rarr; bam "Bat dau dich tab nay". Am thanh tab van nghe duoc binh thuong.</footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

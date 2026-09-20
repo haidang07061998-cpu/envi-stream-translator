@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Hop En-Vi truc tiep</title>
+<meta name="theme-color" content="#0b5cff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/static/mobile/manifest.json">
+<link rel="icon" href="/static/mobile/icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --bg:#0b1020; --panel:#151d33; --panel2:#1b2540; --line:#27314f;
+  --fg:#eaf0ff; --dim:#9fb3ff; --en:#7dd3fc; --vi:#86efac;
+  --ok:#22c55e; --warn:#fcd34d; --bad:#ef4444; --blue:#0b5cff;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg);color:var(--fg);display:flex;flex-direction:column;
+  overflow:hidden;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button,select,input,a.btn{font-family:inherit}
+button{cursor:pointer}
+
+/* ---------- header ---------- */
+header{
+  flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:8px 10px;background:linear-gradient(90deg,#0b5cff,#1b7bff);
+}
+header h1{margin:0;font-size:15px;font-weight:800;letter-spacing:.3px;white-space:nowrap}
+header .spacer{flex:1 1 auto}
+.btn{
+  border:0;border-radius:10px;padding:9px 14px;font-size:14px;font-weight:800;
+  background:#233055;color:var(--fg);text-decoration:none;display:inline-block;
+}
+.btn.go{background:var(--ok);color:#04120a}
+.btn.stop{background:var(--bad);color:#fff}
+.btn.blue{background:#2b6cff;color:#fff}
+.btn.small{padding:7px 11px;font-size:13px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn:active{transform:translateY(1px)}
+
+/* ---------- status banner ---------- */
+#banner{
+  flex:0 0 auto;padding:7px 12px;font-size:13px;line-height:1.4;
+  background:#1e293b;color:var(--warn);border-bottom:1px solid var(--line);
+  display:flex;gap:8px;align-items:flex-start;
+}
+#banner .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--warn);margin-top:4px}
+#banner.ok{color:#bbf7d0}#banner.ok .dot{background:var(--ok)}
+#banner.err{color:#fecaca}#banner.err .dot{background:var(--bad)}
+#banner.busy .dot{animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+#bannerText{flex:1 1 auto}
+#bannerMeta{color:var(--dim);font-size:12px}
+
+/* ---------- mic self test ---------- */
+#micbar{
+  flex:0 0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:7px 10px;background:#101830;border-bottom:1px solid var(--line);
+}
+#meterWrap{flex:1 1 120px;min-width:90px;height:14px;background:#1e293b;border-radius:8px;overflow:hidden}
+#meter{height:100%;width:0%;background:var(--ok);transition:width .06s linear}
+#testmsg{font-size:12px;color:var(--dim);flex:1 1 100%}
+#testmsg.bad{color:#fecaca}
+#testmsg.good{color:#bbf7d0}
+.httphint{color:var(--warn);font-size:12px;padding:5px 12px;background:#2a1f0a;border-bottom:1px solid var(--line)}
+
+/* ---------- panels ---------- */
+main{flex:1 1 auto;display:grid;grid-template-columns:1fr;gap:8px;padding:8px;min-height:0;overflow:hidden}
+@media (orientation:landscape) and (min-width:640px){
+  main{grid-template-columns:1fr 1fr}
+}
+.panel{
+  background:var(--panel);border-radius:14px;display:flex;flex-direction:column;
+  min-height:0;overflow:hidden;border:1px solid var(--line);
+}
+.panel.off{opacity:.5}
+.panel h2{
+  margin:0;padding:8px 12px;font-size:14px;font-weight:800;
+  background:var(--panel2);border-bottom:1px solid var(--line);
+  display:flex;gap:8px;align-items:center;
+}
+.panel.en h2{color:var(--en)}
+.panel.vi h2{color:var(--vi)}
+.panel h2 .tag{margin-left:auto;font-size:11px;color:var(--dim);font-weight:600}
+.auto{padding:5px 12px;font-size:12px;color:var(--dim);background:#111a2e;border-bottom:1px solid var(--line)}
+.live{flex:1 1 auto;overflow-y:auto;padding:10px 12px;font-size:18px;line-height:1.55;-webkit-overflow-scrolling:touch}
+.live .line{margin:0 0 8px;white-space:pre-wrap;word-break:break-word}
+.live .spk{color:var(--warn);font-weight:800}
+.live .partial{opacity:.55;font-style:italic}
+.live .partial:empty{display:none}
+.live .empty{color:var(--dim);font-size:14px}
+.live audio{width:100%;margin-top:6px}
+#notice{margin:0;padding:6px 12px;font-size:12px;color:var(--warn);background:#2a1f0a;display:none}
+
+/* ---------- action bar ---------- */
+#actions{
+  flex:0 0 auto;display:flex;gap:7px;flex-wrap:wrap;align-items:center;
+  padding:8px 10px;background:#101830;border-top:1px solid var(--line);
+}
+#actions .label{font-size:12px;color:var(--dim);width:100%}
+#roombox{
+  flex:0 0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  padding:8px 12px;background:#0d1428;border-top:1px solid var(--line);font-size:12px;color:var(--dim);
+}
+#qrImg{width:96px;height:96px;background:#fff;border-radius:8px;padding:4px;display:none}
+#roomLink{color:var(--en);word-break:break-all;flex:1 1 160px;font-size:12px}
+#summary{
+  flex:0 0 auto;max-height:34vh;overflow-y:auto;padding:10px 12px;
+  background:#101a33;border-top:1px solid var(--line);font-size:14px;display:none;
+}
+#summary h3{margin:0 0 6px;font-size:14px;color:var(--vi)}
+#summary ul{margin:4px 0 8px 18px;padding:0}
+#summary .eng{font-size:11px;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HỌP EN-VI TRỰC TIẾP</h1>
+  <span class="spacer"></span>
+  <select id="mode" class="btn small" title="Chế độ" style="padding:8px 10px">
+    <option value="translate">Dịch EN→VI</option>
+    <option value="transcribe">Chỉ chép EN</option>
+  </select>
+  <input id="pin" class="btn small" type="password" inputmode="numeric" autocomplete="off"
+         placeholder="PIN phòng mật" style="width:120px;background:#233055;color:#fff;border:0;font-weight:600">
+  <button id="btnStart" class="btn go">BẬT MIC</button>
+</header>
+
+<div id="banner"><span class="dot"></span><span id="bannerText">Đang kiểm tra server…</span></div>
+<div id="bannerMeta" style="display:none"></div>
+
+<div class="httphint" id="httpHint" style="display:none">
+  ⚠ Trang đang mở qua HTTP (không phải localhost): trình duyệt sẽ CHẶN micro.
+  Hãy mở trang này trên chính máy chủ (http://localhost:8000/m) để nói, và dùng điện thoại mở link người nghe.
+</div>
+
+<div id="micbar">
+  <button id="btnTest" class="btn blue small">KIỂM TRA MIC</button>
+  <div id="meterWrap"><div id="meter"></div></div>
+  <span id="testmsg">Bấm KIỂM TRA MIC để thử 5 giây.</span>
+</div>
+
+<main>
+  <section class="panel en" id="panelEn">
+    <h2>MÀN HÌNH 1 — NGHE TRỰC TIẾP (EN)<span class="tag" id="tagEn">chờ</span></h2>
+    <div class="auto" id="autoEn">Ngữ cảnh: đang chờ… | Người nói: —</div>
+    <div class="live" id="liveEn"><div class="empty">Phụ đề tiếng Anh sẽ hiện ở đây.</div></div>
+  </section>
+  <section class="panel vi" id="panelVi">
+    <h2>MÀN HÌNH 2 — DỊCH TRỰC TIẾP (VI)<span class="tag" id="tagVi">chờ</span></h2>
+    <div class="auto" id="autoVi">Bản dịch tiếng Việt sẽ hiện ở đây.</div>
+    <p id="notice">Chế độ “Chỉ chép EN”: màn hình 2 tạm tắt vì không dịch.</p>
+    <div class="live" id="liveVi"><div class="empty">Bản dịch tiếng Việt sẽ hiện ở đây.</div></div>
+  </section>
+</main>
+
+<div id="actions">
+  <span class="label">Xong hội thoại → xuất file (mở tab mới):</span>
+  <a class="btn go small" id="expBoth" href="#">TXT EN-VI</a>
+  <a class="btn small" id="expEn" href="#" style="background:#7dd3fc;color:#04120a">TXT EN</a>
+  <a class="btn small" id="expVi" href="#" style="background:#86efac;color:#04120a">TXT VI</a>
+  <a class="btn small" id="expSrt" href="#" style="background:#fcd34d;color:#04120a">SRT</a>
+  <a class="btn small" id="expVtt" href="#" style="background:#c4b5fd;color:#04120a">VTT</a>
+  <button class="btn blue small" id="btnSummary">TÓM TẮT CUỘC HỌP</button>
+  <button class="btn stop small" id="btnDelete">XÓA NGAY</button>
+</div>
+
+<div id="summary"></div>
+
+<div id="roombox">
+  <img id="qrImg" alt="QR link người nghe">
+  <span id="roomLink">Link người nghe sẽ hiện sau khi tạo phòng.</span>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   Hop En-Vi - mobile PWA client (vanilla JS, khong CDN)
+   Luong: mic -> PCM16 16kHz -> WS /ws/stream -> sub EN + dich VI
+   ============================================================ */
+
+var $ = function (id) { return document.getElementById(id); };
+
+var els = {
+  banner: $("banner"), bannerText: $("bannerText"),
+  mode: $("mode"), pin: $("pin"),
+  btnStart: $("btnStart"), btnTest: $("btnTest"),
+  meter: $("meter"), testmsg: $("testmsg"), httpHint: $("httpHint"),
+  liveEn: $("liveEn"), liveVi: $("liveVi"),
+  autoEn: $("autoEn"), autoVi: $("autoVi"),
+  tagEn: $("tagEn"), tagVi: $("tagVi"),
+  panelVi: $("panelVi"), notice: $("notice"),
+  expBoth: $("expBoth"), expEn: $("expEn"), expVi: $("expVi"),
+  expSrt: $("expSrt"), expVtt: $("expVtt"),
+  btnSummary: $("btnSummary"), btnDelete: $("btnDelete"),
+  summary: $("summary"), qrImg: $("qrImg"), roomLink: $("roomLink")
+};
+
+var SCN = {
+  event: "Sự kiện / hội thảo", tech: "Công nghệ", sales: "Kinh doanh / bán hàng",
+  education: "Bài giảng / đào tạo", medical: "Y tế", finance: "Tài chính",
+  meeting: "Cuộc họp", interview: "Phỏng vấn", support: "Hỗ trợ khách hàng"
+};
+var PIN_KEY = "envi_room_pin";
+var SID_KEY = "envi_sid";
+
+/* ---------------- state ---------------- */
+var S = {
+  running: false,          // mic dang gui audio
+  finalizing: false,       // da bam dung, dang cho chot cau
+  ws: null, stream: null, actx: null,
+  srcNode: null, workNode: null, procNode: null, muteGain: null,
+  sid: null, mode: "translate", locked: false,
+  captions: [],            // {id,en,vi,speaker,ts,t_start,t_end}
+  seen: Object.create(null),// dedupe key -> true
+  nSpeakers: 0, scenario: "",
+  capTimer: null, capSince: 0, capErrors: 0,
+  healthTimer: null, lastHealth: null, healthFails: 0,
+  partialEn: "", partialVi: "",
+  partialEnEl: null, partialViEl: null,
+  leftover: new Float32Array(0), srcRate: 48000,
+  hold: [], speech: false, tail: 0, framesSent: 0,
+  micBusy: false, stopping: false, startedAt: 0
+};
+
+function esc(t) {
+  return String(t == null ? "" : t)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function spkLabel(s) {
+  var t = (s == null ? "" : String(s)).trim();
+  if (!t) return "[Speaker 1]";
+  if (/^\d+$/.test(t)) return "[Speaker " + t + "]";
+  if (t.charAt(0) === "[") return t;
+  return "[" + t + "]";
+}
+function setBanner(text, kind) {
+  els.bannerText.textContent = text;
+  els.banner.className = kind || "";
+}
+function setTestMsg(text, kind) {
+  els.testmsg.textContent = text;
+  els.testmsg.className = kind || "";
+}
+function isLocalHost() {
+  var h = location.hostname;
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+}
+function insecureMic() {
+  return location.protocol === "http:" && !isLocalHost();
+}
+function getPin() { return (els.pin.value || "").trim(); }
+function pinQS() {
+  var p = getPin();
+  return p ? "&pin=" + encodeURIComponent(p) : "";
+}
+function authHeaders() {
+  var h = {};
+  var p = getPin();
+  if (p) h["X-Room-Pin"] = p;
+  return h;
+}
+async function readErr(res) {
+  var txt = "";
+  try {
+    var ct = res.headers.get("content-type") || "";
+    if (ct.indexOf("application/json") >= 0) {
+      var j = await res.json();
+      txt = (j && (j.detail || j.message)) || JSON.stringify(j);
+    } else {
+      txt = await res.text();
+    }
+  } catch (e) { txt = ""; }
+  return { status: res.status, text: (txt || "").trim() };
+}
+function humanHttpError(r) {
+  if (r.status === 403) {
+    return "403 — Sai PIN phòng họp mật. Nhập lại PIN ở góc trên bên phải rồi thử lại. (" + (r.text || "Sai PIN phong hop mat") + ")";
+  }
+  if (r.status === 404) return "404 — Không tìm thấy phòng (có thể đã bị xóa).";
+  return "Lỗi HTTP " + r.status + (r.text ? ": " + r.text : "");
+}
+
+/* ---------------- health / status banner ---------------- */
+async function pollHealth() {
+  if (S.running || S.finalizing) return S.lastHealth;
+  try {
+    var r = await fetch("/health", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    var j = await r.json();
+    S.lastHealth = j;
+    S.healthFails = 0;
+    var meta = [];
+    if (j.asr) meta.push("ASR: " + j.asr);
+    if (j.tts) meta.push("TTS: " + j.tts);
+    if (j.mode) meta.push("mode: " + j.mode);
+    if (j.glossary_terms != null) meta.push("thuật ngữ: " + j.glossary_terms);
+    if (j.offline) meta.push("offline");
+    if (j.confidential) meta.push("PHÒNG MẬT");
+    var bannerMeta = $("bannerMeta");
+    bannerMeta.textContent = meta.join("  ·  ");
+    bannerMeta.style.display = meta.length ? "block" : "none";
+
+    if (j.error) {
+      setBanner("Lỗi tải model: " + j.error, "err");
+    } else if (j.loaded) {
+      setBanner("Server sẵn sàng. Bấm BẬT MIC rồi nói tiếng Anh.", "ok");
+    } else if (j.loading) {
+      setBanner("Model đang tải lần đầu (Whisper + VinAI, khoảng 1–2 phút). Vẫn bấm BẬT MIC được — server sẽ chờ.", "busy");
+    } else {
+      setBanner("Server chưa nạp model. Bấm BẬT MIC để kích hoạt.", "busy");
+    }
+    return j;
+  } catch (e) {
+    S.healthFails++;
+    setBanner("Không kết nối được server (/health). Kiểm tra server còn chạy không. Lỗi: " + e.message, "err");
+    return null;
+  }
+}
+
+/* ---------------- session ---------------- */
+async function createSession() {
+  var body = new URLSearchParams();
+  body.set("topic", "live");
+  body.set("mode", S.mode);
+  var p = getPin();
+  if (p) body.set("pin", p);
+  body.set("host", location.origin);
+  var r = await fetch("/session/create", {
+    method: "POST",
+    headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, authHeaders()),
+    body: body.toString()
+  });
+  if (!r.ok) throw new Error(humanHttpError(await readErr(r)));
+  var j = await r.json();
+  S.sid = j.sid;
+  S.locked = !!j.locked;
+  if (j.mode) S.mode = j.mode;
+  try { sessionStorage.setItem(SID_KEY, j.sid); } catch (e) {}
+  showRoom(j);
+  buildExportLinks();
+  startCaptionPolling();
+  return j.sid;
+}
+function showRoom(j) {
+  var link = j.link || (location.origin + "/room/" + j.sid);
+  els.roomLink.innerHTML = 'Link người nghe (mở trên máy khác): <a href="' + esc(link) +
+    '" target="_blank" rel="noopener" style="color:#7dd3fc">' + esc(link) + "</a>" +
+    (j.locked ? " — phòng có PIN, người nghe phải nhập PIN." : "");
+  var qr = j.qr || "";
+  if (qr.indexOf("data:image") === 0) {
+    els.qrImg.src = qr;
+    els.qrImg.style.display = "block";
+  } else {
+    els.qrImg.style.display = "none";
+    if (qr) els.roomLink.innerHTML += '<br>QR: <code style="color:#fcd34d">' + esc(qr) + "</code>";
+  }
+}
+function buildExportLinks() {
+  if (!S.sid) return;
+  var sid = encodeURIComponent(S.sid);
+  var q = pinQS();
+  els.expBoth.href = "/session/" + sid + "/export?format=txt&mode=both" + q;
+  els.expEn.href = "/session/" + sid + "/export?format=txt&mode=en" + q;
+  els.expVi.href = "/session/" + sid + "/export?format=txt&mode=vi" + q;
+  els.expSrt.href = "/session/" + sid + "/export?format=srt&mode=both" + q;
+  els.expVtt.href = "/session/" + sid + "/export?format=vtt&mode=both" + q;
+}
+
+/* ---------------- captions rendering ---------------- */
+function clearLive() {
+  S.captions = [];
+  S.seen = Object.create(null);
+  S.capSince = 0;
+  S.partialEn = ""; S.partialVi = "";
+  els.liveEn.innerHTML = '<div class="empty">Phụ đề tiếng Anh sẽ hiện ở đây.</div>';
+  els.liveVi.innerHTML = '<div class="empty">Bản dịch tiếng Việt sẽ hiện ở đây.</div>';
+  S.partialEnEl = null; S.partialViEl = null;
+}
+function ensureContainers() {
+  if (!S.partialEnEl || !S.partialEnEl.isConnected) {
+    els.liveEn.innerHTML = "";
+    var pe = document.createElement("span");
+    pe.className = "partial";
+    S.partialEnEl = pe;
+  }
+  if (!S.partialViEl || !S.partialViEl.isConnected) {
+    els.liveVi.innerHTML = "";
+    var pv = document.createElement("span");
+    pv.className = "partial";
+    S.partialViEl = pv;
+  }
+}
+function keyOf(c) {
+  if (c && c.id != null && c.id !== "") return "i" + c.id;
+  return "t" + (c && c.speaker ? c.speaker : "") + "|" + (c && c.en ? c.en : "");
+}
+function addCaption(c) {
+  if (!c) return false;
+  var en = c.en || "";
+  var vi = c.vi || "";
+  if (!en && !vi) return false;
+  var k = keyOf(c);
+  if (S.seen[k]) return false;
+  S.seen[k] = true;
+
+  ensureContainers();
+  var line = document.createElement("div");
+  line.className = "line";
+  var who = spkLabel(c.speaker);
+  if (en) {
+    var l1 = document.createElement("div");
+    l1.innerHTML = '<span class="spk">' + esc(who) + "</span> " + esc(en);
+    line.appendChild(l1);
+  }
+  if (vi) {
+    var l2 = document.createElement("div");
+    l2.style.color = "#86efac";
+    l2.innerHTML = '<span class="spk">' + esc(who) + "</span> " + esc(vi);
+    line.appendChild(l2);
+  }
+  els.liveEn.appendChild(line.cloneNode(true));
+  els.liveVi.appendChild(line);
+  if (S.partialEnEl) els.liveEn.appendChild(S.partialEnEl);
+  if (S.partialViEl) els.liveVi.appendChild(S.partialViEl);
+
+  S.captions.push({
+    id: c.id, en: en, vi: vi, speaker: c.speaker || "",
+    ts: c.ts, t_start: c.t_start, t_end: c.t_end
+  });
+  S.capSince = S.captions.length;   // since = so luong caption da co (count offset)
+
+  if (typeof c.n_speakers === "number" && c.n_speakers > 0) S.nSpeakers = c.n_speakers;
+  if (c.scenario) S.scenario = c.scenario;
+  updateAuto();
+  els.liveEn.scrollTop = els.liveEn.scrollHeight;
+  els.liveVi.scrollTop = els.liveVi.scrollHeight;
+  return true;
+}
+function updateAuto() {
+  var scn = S.scenario ? (SCN[S.scenario] || S.scenario) : "đang nhận diện…";
+  var n = S.nSpeakers || 1;
+  els.autoEn.textContent = "Ngữ cảnh (tự động): " + scn + "  |  Số người nói: " + n;
+  els.autoVi.textContent = S.mode === "transcribe"
+    ? "Chế độ chỉ chép EN — không dịch."
+    : "Ngữ cảnh: " + scn + "  |  Số người nói: " + n;
+  els.tagEn.textContent = S.captions.length + " câu";
+  els.tagVi.textContent = S.mode === "transcribe" ? "tắt" : S.captions.length + " câu";
+}
+function setPartial(en, vi) {
+  if (S.mode === "transcribe" && vi == null) vi = "";
+  S.partialEn = en == null ? "" : String(en);
+  S.partialVi = vi == null ? "" : String(vi);
+  if (S.partialEn) {
+    if (!S.partialEnEl || !S.partialEnEl.isConnected) { ensureContainers(); }
+    if (els.liveEn.querySelector(".empty")) els.liveEn.innerHTML = "";
+    if (!S.partialEnEl.parentNode) els.liveEn.appendChild(S.partialEnEl);
+    S.partialEnEl.textContent = S.partialEn;
+    els.liveEn.scrollTop = els.liveEn.scrollHeight;
+  } else if (S.partialEnEl) {
+    S.partialEnEl.textContent = "";
+  }
+  if (S.mode !== "transcribe" && S.partialVi) {
+    if (!S.partialViEl || !S.partialViEl.isConnected) { ensureContainers(); }
+    if (els.liveVi.querySelector(".empty")) els.liveVi.innerHTML = "";
+    if (!S.partialViEl.parentNode) els.liveVi.appendChild(S.partialViEl);
+    S.partialViEl.textContent = S.partialVi;
+    els.liveVi.scrollTop = els.liveVi.scrollHeight;
+  } else if (S.partialViEl) {
+    S.partialViEl.textContent = "";
+  }
+}
+function clearPartial() { setPartial("", ""); }
+
+/* ---------------- captions polling (luoi an toan) ---------------- */
+function startCaptionPolling() {
+  stopCaptionPolling();
+  S.capTimer = setInterval(pollCaptions, 2500);
+}
+function stopCaptionPolling() {
+  if (S.capTimer) { clearInterval(S.capTimer); S.capTimer = null; }
+}
+async function pollCaptions() {
+  if (!S.sid) return;
+  try {
+    var r = await fetch("/session/" + encodeURIComponent(S.sid) + "/captions?since=" + S.capSince,
+      { cache: "no-store", headers: authHeaders() });
+    if (!r.ok) {
+      if (r.status === 403 && S.capErrors++ < 1) setBanner(humanHttpError(await readErr(r)), "err");
+      return;
+    }
+    S.capErrors = 0;
+    var j = await r.json();
+    if (typeof j.n_speakers === "number" && j.n_speakers > 0) S.nSpeakers = j.n_speakers;
+    if (j.scenario) S.scenario = j.scenario;
+    if (j.mode) { S.mode = j.mode; applyMode(); }
+    var caps = j.captions || [];
+    for (var i = 0; i < caps.length; i++) addCaption(caps[i]);
+    if (caps.length) { S.capSince += caps.length; updateAuto(); }
+  } catch (e) { /* im lang: WS la kenh chinh */ }
+}
+
+/* ---------------- PCM helpers ---------------- */
+var TARGET_RATE = 16000, FRAME = 2048, RMS_GATE = 0.004, HOLD_MAX = 6;
+
+function pushSamples(float32) {
+  var merged = new Float32Array(S.leftover.length + float32.length);
+  merged.set(S.leftover, 0);
+  merged.set(float32, S.leftover.length);
+  var off = 0;
+  var need = FRAME * S.srcRate / TARGET_RATE;
+  while (merged.length - off >= need) {
+    emitFrame(merged.subarray(off, off + need));
+    off += need;
+  }
+  S.leftover = merged.slice(off);
+}
+function emitFrame(frame) {
+  var sum = 0;
+  for (var i = 0; i < frame.length; i++) sum += frame[i] * frame[i];
+  var rms = Math.sqrt(sum / frame.length);
+  if (rms < RMS_GATE) {
+    // Im lang / tieng on nen: KHONG gui, tranh dot CPU server.
+    if (!S.speech) {
+      S.hold.push(frame);
+      if (S.hold.length > HOLD_MAX) S.hold.shift();
+      return;
+    }
+    if (S.tail > 0) S.tail--; else return;   // chi gui vai frame cuoi cho VAD
+  } else {
+    S.speech = true;
+    S.tail = 2;
+    if (S.hold.length) {
+      for (var k = 0; k < S.hold.length; k++) sendFrame(S.hold[k]);
+      S.hold.length = 0;
+    }
+  }
+  sendFrame(frame);
+}
+function sendFrame(frame) {
+  var ws = S.ws;
+  if (!ws || ws.readyState !== 1) return;
+  var out = resample(frame, S.srcRate, TARGET_RATE);
+  if (!out.length) return;
+  var pcm = new Int16Array(out.length);
+  for (var i = 0; i < out.length; i++) {
+    var v = out[i];
+    if (v > 1) v = 1; else if (v < -1) v = -1;
+    pcm[i] = v < 0 ? v * 32768 : v * 32767;
+  }
+  try { ws.send(pcm.buffer); S.framesSent++; } catch (e) {}
+}
+function resample(buf, fromRate, toRate) {
+  if (!buf || !buf.length) return new Float32Array(0);
+  if (!fromRate || fromRate === toRate) return buf;
+  var ratio = fromRate / toRate;
+  var n = Math.floor(buf.length / ratio);
+  if (n <= 0) return new Float32Array(0);
+  var out = new Float32Array(n);
+  for (var i = 0; i < n; i++) {
+    var p = i * ratio;
+    var a = Math.floor(p);
+    var b = a + 1;
+    if (b > buf.length - 1) b = buf.length - 1;
+    var f = p - a;
+    out[i] = buf[a] * (1 - f) + buf[b] * f;
+  }
+  return out;
+}
+
+/* ---------------- audio graph (KHONG bao gio noi vao loa) ---------------- */
+var WORKLET_SRC = [
+  'class PCMTap extends AudioWorkletProcessor {',
+  '  process(inputs) {',
+  '    const ch = inputs[0] && inputs[0][0];',
+  '    if (ch && ch.length) this.port.postMessage(new Float32Array(ch));',
+  '    return true;',
+  '  }',
+  '}',
+  'registerProcessor("pcm-tap", PCMTap);'
+].join("\n");
+
+async function buildAudioGraph(stream, onSamples) {
+  var Ctx = window.AudioContext || window.webkitAudioContext;
+  var actx = new Ctx();
+  if (actx.state === "suspended") { try { await actx.resume(); } catch (e) {} }
+  S.actx = actx;
+  S.srcRate = actx.sampleRate || 48000;
+  var src = actx.createMediaStreamSource(stream);
+  S.srcNode = src;
+
+  if (actx.audioWorklet && typeof actx.audioWorklet.addModule === "function" && window.AudioWorkletNode) {
+    try {
+      var url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+      await actx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      var node = new AudioWorkletNode(actx, "pcm-tap", { numberOfInputs: 1, numberOfOutputs: 0 });
+      node.port.onmessage = function (ev) { onSamples(ev.data); };
+      src.connect(node);
+      S.workNode = node;
+      return "worklet";
+    } catch (e) {
+      console.warn("AudioWorklet loi, dung ScriptProcessor:", e);
+    }
+  }
+  // Fallback: ScriptProcessor (deprecated nhung van chay).
+  // src -> proc -> gain(0) -> destination.
+  //   * gain = 0 nen KHONG co tieng nao ra loa: khong the co vong lap
+  //     micro -> loa (feedback/echo). Mic khong bao gio noi thang vao destination.
+  //   * Phai co duong ra destination, neu khong Chromium KHONG BAO GIO goi
+  //     onaudioprocess (do bang thuc nghiem: proc chi co input -> 0 callback/900ms;
+  //     qua gain(0) -> 10 callback/900ms). Bo dong nay thi fallback chet lang.
+  var proc = actx.createScriptProcessor(4096, 1, 1);
+  proc.onaudioprocess = function (ev) { onSamples(ev.inputBuffer.getChannelData(0)); };
+  var mute = actx.createGain();
+  mute.gain.value = 0;
+  src.connect(proc);
+  proc.connect(mute);
+  mute.connect(actx.destination);
+  S.procNode = proc;
+  S.muteGain = mute;
+  return "scriptprocessor";
+}
+function teardownAudio() {
+  try { if (S.srcNode) S.srcNode.disconnect(); } catch (e) {}
+  try { if (S.workNode) { S.workNode.port.onmessage = null; S.workNode.disconnect(); } } catch (e) {}
+  try { if (S.procNode) { S.procNode.onaudioprocess = null; S.procNode.disconnect(); } } catch (e) {}
+  try { if (S.muteGain) S.muteGain.disconnect(); } catch (e) {}
+  try { if (S.actx && S.actx.state !== "closed") S.actx.close(); } catch (e) {}
+  S.srcNode = null; S.workNode = null; S.procNode = null; S.muteGain = null; S.actx = null;
+}
+function stopTracks() {
+  try { if (S.stream) S.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+  S.stream = null;
+}
+function resetPcm() {
+  S.leftover = new Float32Array(0);
+  S.hold = [];
+  S.speech = false;
+  S.tail = 0;
+  S.framesSent = 0;
+}
+
+/* ---------------- mic self test ---------------- */
+async function micTest() {
+  if (S.micBusy) return;
+  S.micBusy = true;
+  els.meter.style.width = "0%";
+  els.meter.style.background = "var(--ok)";
+  setTestMsg("Đang mở micro…");
+  if (insecureMic()) {
+    setTestMsg("Không thể mở micro: trang đang chạy qua HTTP trên địa chỉ LAN (" + location.host +
+      "). Trình duyệt chỉ cho micro trên HTTPS hoặc localhost.", "bad");
+    S.micBusy = false;
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setTestMsg("Trình duyệt không hỗ trợ getUserMedia (cần HTTPS hoặc localhost).", "bad");
+    S.micBusy = false;
+    return;
+  }
+  var s = null, c = null;
+  try {
+    s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    setTestMsg(micErrorText(e), "bad");
+    S.micBusy = false;
+    return;
+  }
+  try {
+    c = new (window.AudioContext || window.webkitAudioContext)();
+    if (c.state === "suspended") { try { await c.resume(); } catch (e2) {} }
+    var src = c.createMediaStreamSource(s);
+    var an = c.createAnalyser();
+    an.fftSize = 1024;
+    src.connect(an); // chi phan tich, KHONG noi ra loa
+    var buf = new Float32Array(an.fftSize);
+    var peakRms = 0, peakRaw = 0;
+    var t0 = Date.now();
+    setTestMsg("Đang nghe… hãy NÓI TO trong 5 giây.");
+    await new Promise(function (res) {
+      var iv = setInterval(function () {
+        an.getFloatTimeDomainData(buf);
+        var sum = 0, mx = 0;
+        for (var i = 0; i < buf.length; i++) { var v = buf[i]; sum += v * v; if (Math.abs(v) > mx) mx = Math.abs(v); }
+        var rms = Math.sqrt(sum / buf.length);
+        if (rms > peakRms) peakRms = rms;
+        if (mx > peakRaw) peakRaw = mx;
+        els.meter.style.width = Math.min(100, rms * 320).toFixed(1) + "%";
+        els.meter.style.background = rms > 0.02 ? "var(--ok)" : (rms > 0.004 ? "var(--warn)" : "var(--bad)");
+        if (Date.now() - t0 > 5000) { clearInterval(iv); res(); }
+      }, 80);
+    });
+    try { s.getTracks().forEach(function (t) { t.stop(); }); } catch (e3) {}
+    try { c.close(); } catch (e4) {}
+    els.meter.style.width = "0%";
+    if (peakRms > 0.02) {
+      setTestMsg("✔ MIC TỐT — mức đỉnh " + peakRms.toFixed(3) + ". Bấm BẬT MIC để bắt đầu dịch.", "good");
+    } else if (peakRms > 0.004) {
+      setTestMsg("△ MIC YẾU — mức đỉnh " + peakRms.toFixed(3) + ". Micro có tín hiệu nhưng rất nhỏ: nói sát micro hơn, hoặc chọn micro mặc định khác trong Windows (Cài đặt → Âm thanh).", "bad");
+    } else {
+      setTestMsg("✘ MIC IM LẶNG — mức đỉnh " + peakRms.toFixed(4) + ". Micro mở được nhưng không thu tiếng: kiểm tra micro đang chọn, quyền micro trong Windows, hoặc micro đang bị ứng dụng khác chiếm.", "bad");
+    }
+  } catch (e) {
+    try { if (s) s.getTracks().forEach(function (t) { t.stop(); }); } catch (e5) {}
+    try { if (c) c.close(); } catch (e6) {}
+    setTestMsg("LỖI KHI ĐO MIC: " + (e && e.message ? e.message : e), "bad");
+  }
+  S.micBusy = false;
+}
+function micErrorText(e) {
+  var name = (e && e.name) || "Error";
+  var base = "LỖI MIC (" + name + "): ";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return base + "Trình duyệt đang CHẶN micro. Bấm vào biểu tượng ổ khóa / micro trên thanh địa chỉ → chọn Microphone → Allow, rồi tải lại trang (F5). Nếu trang mở qua HTTP trên địa chỉ LAN, micro bị chặn tuyệt đối — phải dùng HTTPS hoặc localhost.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return base + "Không tìm thấy micro nào. Cắm micro (hoặc tai nghe có micro) và kiểm tra Cài đặt → Hệ thống → Âm thanh → Đầu vào.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return base + "Micro đang bị ứng dụng khác chiếm (Zoom/Teams/Chrome khác). Đóng ứng dụng đó rồi thử lại.";
+  }
+  if (name === "OverconstrainedError") {
+    return base + "Micro không đáp ứng yêu cầu. Thử lại với micro mặc định.";
+  }
+  return base + (e && e.message ? e.message : "Không rõ nguyên nhân.");
+}
+
+/* ---------------- start / stop ---------------- */
+async function start() {
+  if (S.running || S.finalizing) return;
+  if (insecureMic()) {
+    setBanner("Không thể mở micro: trang chạy qua HTTP trên địa chỉ LAN. Dùng http://localhost:8000/m trên máy chủ, hoặc bật HTTPS.", "err");
+    els.httpHint.style.display = "block";
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setBanner("Trình duyệt không hỗ trợ micro (cần HTTPS hoặc localhost).", "err");
+    return;
+  }
+  S.mode = els.mode.value === "transcribe" ? "transcribe" : "translate";
+  els.btnStart.disabled = true;
+  setBanner("Đang mở micro…", "busy");
+
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+    });
+  } catch (e) {
+    els.btnStart.disabled = false;
+    setBanner(micErrorText(e), "err");
+    setTestMsg(micErrorText(e), "bad");
+    return;
+  }
+
+  try {
+    setBanner("Đang tạo phiên…", "busy");
+    await createSession();
+  } catch (e) {
+    els.btnStart.disabled = false;
+    stopTracks();
+    setBanner("Không tạo được phiên: " + e.message, "err");
+    return;
+  }
+
+  resetPcm();
+  var path = await buildAudioGraph(S.stream, pushSamples);
+  console.log("Audio path:", path, "| sampleRate:", S.srcRate, "| khong noi vao loa");
+
+  openStreamWs();
+  S.running = true;
+  S.startedAt = Date.now();
+  els.btnStart.disabled = false;
+  els.btnStart.textContent = "DỪNG MIC";
+  els.btnStart.className = "btn stop";
+  applyMode();
+  stopCaptionPolling();      // WS la kenh chinh khi dang chay
+  setBanner("Đang nghe (" + (path === "worklet" ? "AudioWorklet" : "ScriptProcessor") + ")… nói tiếng Anh rõ, ngắt câu 1–2 giây.", "ok");
+}
+
+function openStreamWs() {
+  var proto = location.protocol === "https:" ? "wss://" : "ws://";
+  var url = proto + location.host + "/ws/stream?sid=" + encodeURIComponent(S.sid) +
+    "&partial=1&mode=" + encodeURIComponent(S.mode) + pinQS();
+  var ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  S.ws = ws;
+  ws.onopen = function () {
+    if (S.running) setBanner("Đã kết nối. Đang nghe… nói tiếng Anh rõ, ngắt câu 1–2 giây.", "ok");
+  };
+  ws.onerror = function () {
+    if (S.running) setBanner("Lỗi kết nối WebSocket. Kiểm tra server rồi thử lại.", "err");
+  };
+  ws.onclose = function (ev) {
+    S.ws = null;
+    if (S.running) {
+      setBanner("Mất kết nối tới server (WS đóng" + (ev && ev.code ? ", code " + ev.code : "") + "). Bấm DỪNG MIC rồi BẬT MIC lại.", "err");
+      stop(true);
+    }
+  };
+  ws.onmessage = function (ev) {
+    if (typeof ev.data !== "string") return;
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    handleServerMsg(m);
+  };
+}
+function handleServerMsg(m) {
+  if (!m || typeof m !== "object") return;
+  if (m.kind === "status") {
+    var st = m.status || "";
+    if (st === "ready") setBanner(m.msg || "Server sẵn sàng. Hãy nói tiếng Anh.", "ok");
+    else if (st === "error") setBanner("Lỗi server: " + (m.msg || ""), "err");
+    else setBanner(m.msg || "Model đang tải…", "busy");
+    return;
+  }
+  if (m.kind === "partial") {
+    setPartial(m.en, S.mode === "transcribe" ? null : m.vi);
+    return;
+  }
+  if (m.kind === "final" || m.en) {
+    clearPartial();
+    addCaption(m);
+    if (m.audio_vi) {
+      var mime = m.audio_mime || "audio/mp3";
+      try {
+        var au = els.liveVi.querySelector("audio");
+        if (!au) { au = document.createElement("audio"); au.controls = true; au.setAttribute("playsinline", ""); els.liveVi.appendChild(au); }
+        au.src = "data:" + mime + ";base64," + m.audio_vi;
+        au.play().catch(function () {});
+      } catch (e) {}
+    }
+    var parts = [];
+    if (m.e2e_ms != null) parts.push("E2E " + Math.round(m.e2e_ms) + "ms");
+    if (m.asr_ms != null) parts.push("ASR " + Math.round(m.asr_ms) + "ms");
+    if (m.nmt_ms != null) parts.push("NMT " + Math.round(m.nmt_ms) + "ms");
+    if (parts.length) {
+      var meta = $("bannerMeta");
+      meta.textContent = parts.join("  ·  ");
+      meta.style.display = "block";
+    }
+    return;
+  }
+  if (m.kind === "ping") return;
+}
+
+async function stop(silent) {
+  if (S.stopping) return;
+  S.stopping = true;
+  var wasRunning = S.running;
+  S.running = false;
+  els.btnStart.disabled = true;
+  if (wasRunning && !silent) setBanner("Đang chốt câu cuối…", "busy");
+
+  // 1) chan audio truoc (khong gui them frame)
+  teardownAudio();
+  stopTracks();
+
+  // 2) ep server chot cau cuoi bang frame rong, cho final, roi moi dong
+  var ws = S.ws;
+  if (ws && ws.readyState === 1) {
+    try { ws.send(new ArrayBuffer(0)); } catch (e) {}
+    await new Promise(function (res) {
+      var done = false;
+      var to = setTimeout(function () { if (!done) { done = true; res(); } }, 1400);
+      var prev = ws.onmessage;
+      ws.onmessage = function (ev) {
+        if (typeof ev.data === "string") {
+          try {
+            var m = JSON.parse(ev.data);
+            if (m && (m.kind === "final" || m.en)) {
+              handleServerMsg(m);
+              if (!done) { done = true; clearTimeout(to); res(); }
+              return;
+            }
+          } catch (e2) {}
+        }
+        if (prev) prev(ev);
+      };
+    });
+  }
+  try { if (ws && ws.readyState <= 1) ws.close(1000, "stop"); } catch (e) {}
+  S.ws = null;
+
+  resetPcm();
+  clearPartial();
+  S.stopping = false;
+  els.btnStart.disabled = false;
+  els.btnStart.textContent = "BẬT MIC";
+  els.btnStart.className = "btn go";
+  startCaptionPolling();
+  if (!silent) {
+    setBanner("Đã dừng. " + (S.sid ? "Bấm TÓM TẮT CUỘC HỌP hoặc xuất file bên dưới." : "Bấm BẬT MIC để nói tiếp."), "ok");
+  }
+  pollHealth();
+}
+
+/* ---------------- mode ---------------- */
+function applyMode() {
+  var tr = S.mode === "transcribe";
+  els.notice.style.display = tr ? "block" : "none";
+  els.panelVi.classList.toggle("off", tr);
+  els.expVi.style.opacity = tr ? ".45" : "1";
+  els.expBoth.style.opacity = tr ? ".45" : "1";
+  els.tagVi.textContent = tr ? "tắt" : S.captions.length + " câu";
+  updateAuto();
+}
+
+/* ---------------- summary / delete ---------------- */
+async function doSummary() {
+  if (!S.sid) { setBanner("Chưa có phiên nào. Bấm BẬT MIC trước.", "err"); return; }
+  var viText = S.captions.map(function (c) {
+    var t = c.vi || c.en || "";
+    return t ? spkLabel(c.speaker) + " " + t : "";
+  }).filter(Boolean).join("\n");
+  els.btnSummary.disabled = true;
+  els.summary.style.display = "block";
+  els.summary.innerHTML = "<h3>Tóm tắt cuộc họp</h3><div>Đang tóm tắt…</div>";
+  try {
+    var r = await fetch("/session/" + encodeURIComponent(S.sid) + "/summary", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+      body: JSON.stringify({ vi_text: viText })
+    });
+    if (!r.ok) throw new Error(humanHttpError(await readErr(r)));
+    var j = await r.json();
+    var html = "<h3>Tóm tắt cuộc họp</h3>";
+    html += "<div>" + esc(j.summary || "(không có nội dung)") + "</div>";
+    var acts = j.actions || [];
+    if (acts.length) {
+      html += "<h3 style='margin-top:8px'>Việc cần làm</h3><ul>";
+      for (var i = 0; i < acts.length; i++) html += "<li>" + esc(acts[i]) + "</li>";
+      html += "</ul>";
+    }
+    if (j.engine) html += '<div class="eng">engine: ' + esc(j.engine) + "</div>";
+    els.summary.innerHTML = html;
+  } catch (e) {
+    els.summary.innerHTML = "<h3>Tóm tắt cuộc họp</h3><div style='color:#fecaca'>Lỗi: " + esc(e.message) + "</div>";
+  }
+  els.btnSummary.disabled = false;
+}
+async function doDelete() {
+  if (!S.sid) { setBanner("Chưa có phiên nào để xóa.", "err"); return; }
+  if (!confirm("Xóa vĩnh viễn phòng " + S.sid + "? Toàn bộ phụ đề và bản dịch sẽ bị hủy, không khôi phục được.")) return;
+  try {
+    var r = await fetch("/session/" + encodeURIComponent(S.sid) + "?pin=" + encodeURIComponent(getPin()),
+      { method: "DELETE", headers: authHeaders() });
+    if (!r.ok) throw new Error(humanHttpError(await readErr(r)));
+    await r.json();
+    stopCaptionPolling();
+    S.sid = null;
+    try { sessionStorage.removeItem(SID_KEY); } catch (e) {}
+    clearLive();
+    els.summary.style.display = "none";
+    els.qrImg.style.display = "none";
+    els.roomLink.textContent = "Đã xóa phòng. Bấm BẬT MIC để tạo phiên mới.";
+    setBanner("Đã xóa phòng họp mật. Dữ liệu đã hủy.", "ok");
+  } catch (e) {
+    setBanner("Không xóa được: " + e.message, "err");
+  }
+}
+
+/* ---------------- lifecycle: khong bo roi cau cuoi ---------------- */
+function hardStop() {
+  var ws = S.ws;
+  S.running = false;
+  S.finalizing = false;
+  if (ws) {
+    try { if (ws.readyState === 1) ws.send(new ArrayBuffer(0)); } catch (e) {}
+    try { ws.close(1000, "pagehide"); } catch (e) {}
+  }
+  S.ws = null;
+  teardownAudio();
+  stopTracks();
+}
+window.addEventListener("pagehide", hardStop);
+window.addEventListener("beforeunload", function () { if (S.running) hardStop(); });
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "hidden" && S.running) {
+    // An tab tren di dong = khong con thu am duoc -> chot cau va dong sach.
+    hardStop();
+    els.btnStart.textContent = "BẬT MIC";
+    els.btnStart.className = "btn go";
+    setBanner("Trang bị ẩn nên đã dừng thu và chốt câu cuối. Bấm BẬT MIC để tiếp tục.", "busy");
+    startCaptionPolling();
+  }
+});
+
+/* ---------------- wiring ---------------- */
+els.btnStart.addEventListener("click", function () {
+  if (S.running) stop(false); else start();
+});
+els.btnTest.addEventListener("click", micTest);
+els.btnSummary.addEventListener("click", doSummary);
+els.btnDelete.addEventListener("click", doDelete);
+els.mode.addEventListener("change", function () {
+  S.mode = els.mode.value === "transcribe" ? "transcribe" : "translate";
+  applyMode();
+  if (S.running) {
+    setBanner("Đã đổi chế độ. Bấm DỪNG MIC rồi BẬT MIC lại để áp dụng cho luồng đang chạy.", "busy");
+  }
+});
+els.pin.addEventListener("change", function () {
+  var p = getPin();
+  try { if (p) sessionStorage.setItem(PIN_KEY, p); else sessionStorage.removeItem(PIN_KEY); } catch (e) {}
+  buildExportLinks();
+});
+
+/* ---------------- boot ---------------- */
+(function boot() {
+  try {
+    var sp = new URLSearchParams(location.search).get("pin");
+    if (sp) els.pin.value = sp;
+    else {
+      var saved = sessionStorage.getItem(PIN_KEY);
+      if (saved) els.pin.value = saved;
+    }
+  } catch (e) {}
+  S.mode = els.mode.value === "transcribe" ? "transcribe" : "translate";
+  applyMode();
+  if (insecureMic()) els.httpHint.style.display = "block";
+  if (!window.isSecureContext) console.warn("Khong phai secure context: getUserMedia co the bi chan.");
+  pollHealth();
+  S.healthTimer = setInterval(pollHealth, 5000);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/static/mobile/sw.js").catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>

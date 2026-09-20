@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phong nghe - Dich truc tiep EN-VI</title>
+<meta name="theme-color" content="#0b5cff">
+<style>
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#0b1020;color:#fff;display:flex;flex-direction:column}
+header{padding:10px 14px;background:#0b5cff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+header b{font-size:16px}
+header .sp{flex:1}
+.pill{font-size:12px;padding:4px 10px;border-radius:999px;background:#04120a;color:#86efac;font-weight:700}
+.pill.warn{background:#3b2a04;color:#fcd34d}
+.pill.bad{background:#3b0a0a;color:#fca5a5}
+#bar{padding:6px 14px;font-size:13px;background:#1e293b;color:#fcd34d}
+#pins{display:none;padding:8px 14px;background:#1e293b;gap:8px;align-items:center}
+#pins.on{display:flex}
+#pins input{padding:8px;border-radius:8px;border:1px solid #334155;background:#0b1020;color:#fff;width:130px}
+button,a.btn{cursor:pointer;border:0;border-radius:10px;padding:9px 14px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
+.b-green{background:#22c55e;color:#04120a}.b-blue{background:#0b5cff;color:#fff}
+.b-yellow{background:#fcd34d;color:#04120a}.b-red{background:#ef4444;color:#fff}
+.b-ghost{background:#1e293b;color:#e5e7eb}
+main{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;min-height:0}
+@media(max-width:760px){main{grid-template-columns:1fr;overflow-y:auto}}
+.panel{background:#151d33;border-radius:14px;padding:12px;overflow-y:auto;min-height:32vh}
+.panel h2{margin:0 0 6px;font-size:16px}
+.en h2{color:#7dd3fc}.vi h2{color:#86efac}
+.meta{font-size:12px;color:#9fb3ff;margin-bottom:8px}
+.line{background:#0b1020;border-radius:10px;padding:8px 10px;margin-bottom:6px;line-height:1.5}
+.line .spk{color:#fcd34d;font-weight:700;font-size:12px;margin-right:4px}
+.partial{opacity:.65;font-style:italic}
+footer{padding:8px 14px;background:#0b1020;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:#9fb3ff}
+#qrbox{display:none;padding:10px 14px;background:#0b1020}
+#qrbox img{background:#fff;padding:8px;border-radius:10px;width:150px;height:150px}
+#sum{display:none;margin:10px;padding:12px;background:#151d33;border-radius:14px;font-size:14px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header>
+  <b>PHONG <span id="sid">...</span></b>
+  <span class="sp"></span>
+  <span class="pill" id="conn">dang ket noi...</span>
+  <span class="pill warn" id="mode">che do: ...</span>
+  <span class="pill" id="spk">nguoi noi: ...</span>
+  <button class="b-ghost" id="btnqr">Ma QR moi nguoi</button>
+</header>
+<div id="bar">Dang tai phong...</div>
+<div id="pins">
+  <span>Phong nay co PIN:</span>
+  <input id="pin" type="password" inputmode="numeric" placeholder="Nhap PIN">
+  <button class="b-green" id="btnpin">Vao phong</button>
+  <span style="color:#9fb3ff;font-size:12px">PIN chi luu trong tab nay</span>
+</div>
+<div id="qrbox"><img id="qrimg" alt="QR vao phong"><div style="margin-top:6px;font-size:12px;color:#9fb3ff">Dien thoai quet ma nay de doc phu de</div></div>
+<main>
+  <div class="panel en"><h2>MAN HINH 1 - NGHE TRUC TIEP (EN)</h2><div class="meta" id="m1">...</div><div id="en"></div></div>
+  <div class="panel vi"><h2>MAN HINH 2 - DICH TRUC TIEP (VI)</h2><div class="meta" id="m2">...</div><div id="vi"></div><audio id="au" controls playsinline style="width:100%;margin-top:8px"></audio></div>
+</main>
+<div id="sum"></div>
+<footer>
+  <span>Xuat file:</span>
+  <a class="btn b-green" id="eBoth" href="#">TXT EN-VI</a>
+  <a class="btn b-blue" id="eEn" href="#">TXT EN</a>
+  <a class="btn b-green" id="eVi" href="#">TXT VI</a>
+  <a class="btn b-yellow" id="eSrt" href="#">SRT</a>
+  <a class="btn b-yellow" id="eVtt" href="#">VTT</a>
+  <button class="b-ghost" id="btnsum">Tom tat cuoc hop</button>
+  <span class="sp" style="flex:1"></span>
+  <span id="cnt"></span>
+</footer>
+<script>
+const $ = id => document.getElementById(id);
+const SID = (location.pathname.split('/room/')[1] || '').split('/')[0].split('?')[0];
+$('sid').textContent = SID || '?';
+let pin = sessionStorage.getItem('room_pin_' + SID) || '';
+let ws = null, enFinal = '', viFinal = '', nShown = 0, mode = 'translate', retry = 0;
+
+function say(t, cls) {
+  $('bar').textContent = t;
+  if (cls) $('bar').style.color = cls;
+}
+function setConn(t, cls) {
+  $('conn').textContent = t;
+  $('conn').className = 'pill' + (cls ? ' ' + cls : '');
+}
+function esc(s) { return (s || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+function exportLinks() {
+  const q = pin ? ('&pin=' + encodeURIComponent(pin)) : '';
+  $('eBoth').href = `/session/${SID}/export?format=txt&mode=both${q}`;
+  $('eEn').href = `/session/${SID}/export?format=txt&mode=en${q}`;
+  $('eVi').href = `/session/${SID}/export?format=txt&mode=vi${q}`;
+  $('eSrt').href = `/session/${SID}/export?format=srt${q}`;
+  $('eVtt').href = `/session/${SID}/export?format=vtt${q}`;
+}
+exportLinks();
+
+function line(speaker, text) {
+  return `<div class="line"><span class="spk">[${esc(speaker || 'Speaker 1')}]</span>${esc(text)}</div>`;
+}
+function addCaption(c) {
+  nShown++;
+  enFinal += line(c.speaker, c.en);
+  viFinal += line(c.speaker, c.vi || '...');
+  $('en').innerHTML = enFinal;
+  $('vi').innerHTML = viFinal;
+  $('en').parentElement.scrollTop = 1e6;
+  $('vi').parentElement.scrollTop = 1e6;
+  $('cnt').textContent = nShown + ' cau';
+  if (c.asr_ms || c.nmt_ms) {
+    $('m2').textContent = `ASR ${Math.round(c.asr_ms || 0)}ms + NMT ${Math.round(c.nmt_ms || 0)}ms`;
+  }
+}
+function setPartial(en, vi) {
+  const keepEn = enFinal, keepVi = viFinal;
+  $('en').innerHTML = keepEn + (en ? `<div class="line partial">${esc(en)}</div>` : '');
+  if (mode === 'translate') $('vi').innerHTML = keepVi + (vi ? `<div class="line partial">${esc(vi)}</div>` : '');
+}
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const q = pin ? ('?pin=' + encodeURIComponent(pin)) : '';
+  setConn('dang ket noi...', 'warn');
+  ws = new WebSocket(proto + location.host + '/ws/room/' + SID + q);
+  ws.onopen = () => { retry = 0; setConn('truc tiep', ''); say('Da vao phong. Phu de se hien ngay khi nguoi noi bat dau.'); };
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.kind === 'ping') { try { ws.send('ping'); } catch (e) { } return; }
+    if (m.kind === 'pong') return;
+    if (m.kind === 'status') { say(m.msg || ''); if (m.status === 'error') setConn('loi', 'bad'); return; }
+    if (m.kind === 'snapshot') {
+      mode = m.mode || 'translate';
+      $('mode').textContent = 'che do: ' + (mode === 'translate' ? 'EN → VI' : 'chi EN');
+      $('spk').textContent = 'nguoi noi: ' + (m.n_speakers || 1);
+      $('m1').textContent = 'Ngu canh: ' + (m.scenario || 'event');
+      if (mode !== 'translate') {
+        $('vi').innerHTML = '<div class="line">Phong nay chi bat phu de tieng Anh (che do transcribe).</div>';
+        $('au').style.display = 'none';
+      }
+      (m.captions || []).forEach(addCaption);
+      say('Da dong bo ' + (m.captions || []).length + ' cau truoc do.');
+      return;
+    }
+    if (m.kind === 'caption') {
+      addCaption(m);
+      if (m.vi) $('m2').textContent = 'Ban dich moi nhat: ' + m.vi.slice(0, 60);
+      return;
+    }
+    if (m.kind === 'final' && m.en) { addCaption({ speaker: m.speaker, en: m.en, vi: m.vi, asr_ms: m.asr_ms, nmt_ms: m.nmt_ms }); return; }
+    if (m.kind === 'partial') { setPartial(m.en, m.vi); return; }
+  };
+  ws.onclose = ev => {
+    if (ev.code === 4403) { setConn('sai PIN', 'bad'); $('pins').classList.add('on'); say('Sai PIN phong hop mat. Nhap lai.', '#fca5a5'); return; }
+    if (ev.code === 4404) { setConn('khong co phong', 'bad'); say('Khong tim thay phong ' + SID, '#fca5a5'); return; }
+    setConn('mat ket noi', 'warn');
+    retry++;
+    if (retry <= 10) setTimeout(connect, Math.min(8000, 500 * retry));
+    else say('Khong ket noi lai duoc. Tai lai trang (F5).');
+  };
+  ws.onerror = () => setConn('loi ket noi', 'bad');
+}
+
+async function checkAccess() {
+  const h = pin ? { 'X-Room-Pin': pin } : {};
+  try {
+    const r = await fetch(`/session/${SID}/captions?since=0`, { headers: h });
+    if (r.status === 403) {
+      $('pins').classList.add('on');
+      setConn('can PIN', 'warn');
+      say('Phong hop mat: nhap PIN de xem phu de.', '#fcd34d');
+      return false;
+    }
+    if (r.status === 404) { setConn('khong co phong', 'bad'); say('Khong tim thay phong ' + SID, '#fca5a5'); return false; }
+    const j = await r.json();
+    mode = j.mode || 'translate';
+    $('mode').textContent = 'che do: ' + (mode === 'translate' ? 'EN → VI' : 'chi EN');
+    $('spk').textContent = 'nguoi noi: ' + (j.n_speakers || 1);
+    $('m1').textContent = 'Ngu canh: ' + (j.scenario || 'event');
+    say('Phong mo. Dang cho phu de...');
+    return true;
+  } catch (e) { say('Khong goi duoc server.'); return false; }
+}
+
+$('btnpin').onclick = async () => {
+  pin = ($('pin').value || '').trim();
+  sessionStorage.setItem('room_pin_' + SID, pin);
+  exportLinks();
+  if (await checkAccess()) { $('pins').classList.remove('on'); connect(); }
+};
+$('pin').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnpin').click(); });
+$('btnqr').onclick = () => {
+  const box = $('qrbox');
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  $('qrimg').src = `/session/${SID}/qr.png?t=` + Date.now();
+  $('qrimg').onerror = () => { say('Chua cai qrcode tren server: pip install qrcode[pil]. Link: ' + location.href); };
+  box.style.display = 'block';
+};
+$('btnsum').onclick = async () => {
+  const h = { 'Content-Type': 'application/json' };
+  if (pin) h['X-Room-Pin'] = pin;
+  $('sum').style.display = 'block';
+  $('sum').textContent = 'Dang tom tat...';
+  try {
+    const r = await fetch(`/session/${SID}/summary`, { method: 'POST', headers: h, body: '{}' });
+    if (!r.ok) { $('sum').textContent = 'Loi ' + r.status + ': ' + (await r.text()); return; }
+    const j = await r.json();
+    let t = 'TOM TAT CUOC HOP\n' + (j.summary || '(chua co noi dung)') +
+      '\n\nACTION ITEMS\n' + ((j.actions && j.actions.length) ? j.actions.map(a => '- ' + a).join('\n') : '(khong co)') +
+      '\n\nEngine: ' + (j.engine || '') + ' | So cau: ' + (j.n_captions || 0) + ' | Thoi luong: ' + (j.duration_sec || 0) + 's';
+    $('sum').textContent = t;
+  } catch (e) { $('sum').textContent = 'Loi: ' + e; }
+};
+
+(async () => {
+  if (await checkAccess()) connect();
+})();
+</script>
+</body>
+</html>
