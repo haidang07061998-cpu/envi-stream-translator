@@ -264,8 +264,18 @@ def health():
         "rooms": len(rooms.SESSIONS),
         "uptime_sec": round(time.time() - APP_START, 1),
         "nmt": (p.nmt.stats() if p else None),
-        "nmt_remote": bool(os.getenv("NMT_REMOTE_URL", "").strip()),
+        # dung effective_remote_url() chu khong chi doc bien moi truong, vi dia chi
+        # may GPU con co the nam trong gpu_url.txt (truong hop nay truoc day hien sai)
+        "nmt_remote": _is_remote_nmt(),
     }
+
+
+def _is_remote_nmt() -> bool:
+    try:
+        from src.nmt import effective_remote_url
+        return bool(effective_remote_url())
+    except Exception:
+        return False
 
 
 @app.get("/metrics")

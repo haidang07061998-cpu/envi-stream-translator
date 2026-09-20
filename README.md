@@ -456,3 +456,39 @@ Ghi nhớ:
 - Muốn người khác **quét QR vào nghe** thì phải có server: dùng URL Kaggle (công khai) hoặc
   chạy server local (`python -m uvicorn app.server:app --host 0.0.0.0 --port 8000`) rồi cho
   điện thoại vào `http://<IP-LAN>:8000/room/<sid>`.
+
+### Kiến trúc C — **server ở localhost, dịch bằng GPU Kaggle** ⭐
+
+Đây là cách cân bằng nhất: giao diện/phòng/QR chạy tại máy (nhanh, không phụ thuộc mạng cho
+phần UI), còn phần dịch nặng thì đẩy lên GPU.
+
+```powershell
+.\run_localhost_gpu.bat          # hoặc: python -m uvicorn app.server:app --host 0.0.0.0 --port 8000
+```
+
+| Thành phần | Chạy ở đâu |
+|---|---|
+| Mic / audio (PWA, desktop, extension) | **máy bạn** |
+| ASR (faster-whisper `tiny.en`) | **máy bạn** |
+| PWA `/m`, phòng `/room/<sid>`, QR, xuất TXT/SRT/VTT, tóm tắt | **máy bạn** (`localhost:8000`) |
+| **NMT EN→VI** | **GPU Kaggle** (chỉ nhận **text**) |
+| TTS tiếng Việt (tuỳ chọn `tts=1`) | máy bạn (Edge/Piper) |
+
+**Số đo thật** (audio tiếng Anh → localhost → Kaggle):
+
+```
+FINAL EN: 'We need to check the budget before Friday.'
+      VI: 'Chúng ta cần kiểm tra ngân sách trước thứ Sáu.'   ✅
+      NMT: 407 ms   (dịch tại máy CPU: 3500 ms  →  nhanh 8.6x)
+```
+
+Kiểm tra nhanh xem đang dùng GPU hay không:
+```powershell
+curl http://localhost:8000/health     # xem "nmt": {"engine": "remote:https://..."}
+```
+- `"engine": "remote:https://..."` → **đang dùng GPU Kaggle** ✅
+- `"engine": "hf-cpu"` → đang dịch tại máy (chưa có `gpu_url.txt`, hoặc đang bật `CONFIDENTIAL`)
+
+> ⚠️ **Đừng chạy `run_hop_mat_offline.bat` cho kiến trúc này** — chế độ họp mật sẽ **chặn**
+> gửi text lên GPU (đúng theo thiết kế). Muốn vừa họp mật vừa dùng GPU thì phải nói rõ:
+> `set ALLOW_REMOTE_IN_CONFIDENTIAL=1`.
