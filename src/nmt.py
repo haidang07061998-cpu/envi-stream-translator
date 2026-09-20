@@ -164,6 +164,13 @@ class RemoteNMT:
             except Exception as e:
                 self.errors += 1
                 self.last_error = f"{type(e).__name__}: {e}"
+                # Bao RO khi may GPU tat (vd het phien Kaggle) - neu khong nguoi dung
+                # chi thay man hinh 2 TRONG ma khong biet vi sao.
+                if self.errors == 1 or self.errors % 20 == 0:
+                    print(f"[NMT] !!! KHONG GOI DUOC MAY GPU ({self.last_error})")
+                    print("[NMT]     -> Man hinh 2 (VI) se TRONG cho den khi co GPU tro lai.")
+                    print("[NMT]     Kiem tra: phien Kaggle/Colab con chay khong? URL con dung?")
+                    print("[NMT]     Muon dich ngay tai may: xoa file gpu_url.txt roi chay lai.")
                 out.append("")            # khong lam vo luong: tra rong
         return (out[0], total) if single else (out, total)
 
