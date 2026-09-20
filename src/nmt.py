@@ -180,18 +180,18 @@ class NMTTranslator:
         import torch
         ids = self.tok(t, return_tensors="pt", truncation=True,
                        max_length=128).input_ids.to(self.device)
+        # early_stopping chi co y nghia khi beam > 1 (neu khong transformers canh bao)
+        extra = {"early_stopping": True} if beams > 1 else {}
         with torch.no_grad():
             try:
                 out = self.model.generate(
                     ids, decoder_start_token_id=self.vi_id,
                     num_beams=beams, max_new_tokens=80,
-                    early_stopping=True, no_repeat_ngram_size=3,
-                    length_penalty=1.0)
+                    no_repeat_ngram_size=3, length_penalty=1.0, **extra)
             except TypeError:
                 out = self.model.generate(
                     ids, decoder_start_token_id=self.vi_id,
-                    num_beams=beams, max_length=self.max_len,
-                    early_stopping=True)
+                    num_beams=beams, max_length=self.max_len, **extra)
         return self.tok.batch_decode(out, skip_special_tokens=True)[0].strip()
 
     def _ct2_vinai(self, t: str, beams: int):

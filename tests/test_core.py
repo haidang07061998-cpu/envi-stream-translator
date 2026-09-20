@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -486,7 +487,49 @@ class TestSummarizer(unittest.TestCase):
         self.assertEqual(r["mode"], "actions")
 
 
-# --------------------------------------------------------------------- 10. client JS/JSON
+# --------------------------------------------------------------------- 10. audio
+class TestAudioUtils(unittest.TestCase):
+    """Loi that: librosa.load() tren MP3 roi vao audioread -> goi ffmpeg -> treo.
+    Gio load_audio_16k uu tien soundfile + scipy.resample_poly."""
+
+    def test_load_wav_stereo_24k_thanh_mono_16k(self):
+        import soundfile as sf
+        from src.audio_utils import load_audio_16k
+        p = os.path.join(ROOT, "_t_audio.wav")
+        sr = 24000
+        t = np.linspace(0, 1.0, sr, endpoint=False)
+        tone = (0.3 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+        try:
+            sf.write(p, np.stack([tone, tone], axis=-1), sr)   # stereo 24k
+            y = load_audio_16k(p)
+            self.assertEqual(y.ndim, 1, "phai la mono")
+            self.assertAlmostEqual(len(y), 16000, delta=200)
+            self.assertEqual(y.dtype, np.float32)
+            self.assertLess(float(np.abs(y).max()), 1.0)
+        finally:
+            if os.path.exists(p):
+                os.remove(p)
+
+    def test_resample_16k(self):
+        from src.audio_utils import resample_to_16k
+        y = np.zeros(48000, dtype=np.float32)
+        self.assertAlmostEqual(len(resample_to_16k(y, 48000, 16000)), 16000, delta=2)
+        self.assertEqual(len(resample_to_16k(y, 16000, 16000)), 48000)
+
+    def test_file_khong_ton_tai_bao_loi_ngay(self):
+        """LOI THAT: fallback librosa tren file khong ton tai -> spawn ffmpeg -> TREO.
+
+        load_audio_16k phai bao FileNotFoundError ngay, khong duoc thu librosa.
+        """
+        from src.audio_utils import load_audio_16k
+        p = os.path.join(ROOT, "_khong_ton_tai_xyz.wav")
+        t0 = time.time()
+        with self.assertRaises(FileNotFoundError):
+            load_audio_16k(p)
+        self.assertLess(time.time() - t0, 2.0, "phai bao loi ngay, khong duoc treo")
+
+
+# --------------------------------------------------------------------- 11. client JS/JSON
 class TestClientAssets(unittest.TestCase):
     """Loi that da tung lam PWA mobile chet hoan toan: dau '|' lac trong <script>."""
 

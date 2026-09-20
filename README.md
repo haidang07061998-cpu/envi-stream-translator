@@ -153,7 +153,7 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 ## 5. Test
 
 ```powershell
-python -m unittest discover -s tests -t .      # 74 test, ~0.4s, KHÔNG cần model/mạng
+python -m unittest discover -s tests -t .      # 77 test, ~1.1s, KHÔNG cần model/mạng
 ```
 > Lưu ý: nếu máy đang tải model (CPU 100%), một test WebSocket có thể timeout do tranh CPU.
 > Đây là giới hạn của môi trường chạy test, không phải lỗi logic — chạy lại khi máy rảnh.
@@ -220,7 +220,11 @@ scripts/             # tải model offline, convert CT2
 | 19 | Extension trỏ `popup.html` không tồn tại | extension **không cài được** | dựng lại MV3 + offscreen document |
 | 20 | `locustfile` mỗi user poll phòng của chính mình | load test **vô nghĩa** | đo đúng WS speaker + WS listener |
 | 21 | `nginx` thiếu timeout WS, `Connection: upgrade` vô điều kiện | WS đứt sau 60s, upload >1MB lỗi | `map` + `proxy_read_timeout 3600s` + `client_max_body_size` |
-| 22 | Không có git/test/README | lỗi tích luỹ không ai biết | `git init`, 72 test, tài liệu này |
+| 22 | Không có git/test/README | lỗi tích luỹ không ai biết | `git init`, 77 test, tài liệu này |
+| 23 | `load_audio_16k` gọi `librosa` trước | đọc MP3 có thể **treo >4 phút** (librosa → audioread → ffmpeg subprocess) | ưu tiên `soundfile` + `scipy.resample_poly`, fail-fast nếu file không tồn tại |
+| 24 | Model nội bộ `models/` bị bỏ qua (load theo ID HuggingFace) | "offline 100%" vẫn phụ thuộc cache HF | `local_model_dir()` + `resolve_nmt_path()`, `download_offline_models.py` tải thẳng vào `models/` |
+| 25 | `sentencepiece` không đọc được đường dẫn có dấu tiếng Việt | tokenizer báo `Unable to load vocabulary from file` khi repo nằm trong `F:\5 bài test\...` | trả về **đường dẫn tương đối ASCII**, fallback cache HF + cảnh báo |
+| 26 | CPU final beam = 2 | đo thực tế VinAI fp32 tốn **~6–20s/câu** trên CPU | mặc định CPU beam = 1; bắt buộc CT2 int8 để đạt realtime |
 
 ---
 

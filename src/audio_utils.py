@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 
 TARGET_SR = 16000
@@ -29,25 +31,38 @@ def resample_to_16k(buf, from_sr, to_sr=16000):
             return np.interp(x_new, x_old, buf).astype(np.float32)
 
 def load_audio_16k(path: str) -> np.ndarray:
-    """Load bat ky file audio -> mono 16kHz float32. Dung librosa neu co, fallback soundfile."""
+    """Load bat ky file audio -> mono 16kHz float32.
+
+    UU TIEN soundfile (goi thang libsndfile, nhanh, khong subprocess) roi resample
+    bang scipy.resample_poly. Chi fallback sang librosa neu soundfile khong doc duoc.
+
+    Ly do: `librosa.load()` tren file MP3/M4A co the roi vao audioread -> goi ffmpeg
+    bang subprocess -> treo rat lau (hoac bi chan) o moi truong khong cho spawn tien
+    trinh. Do thuc te: soundfile doc file mp3 8.7s trong <0.1s, con duong librosa treo
+    qua 4 phut. Vi vay:
+      - file khong ton tai -> bao loi NGAY (khong thu librosa de khoi treo)
+      - chi thu librosa khi file co that va soundfile khong doc duoc (vd .m4a thieu codec)
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Khong tim thay file audio: {path}")
     try:
-        import librosa
-        y, _ = librosa.load(path, sr=TARGET_SR, mono=True)
-        return y.astype(np.float32)
-    except Exception:
         import soundfile as sf
         y, sr = sf.read(path, dtype="float32", always_2d=False)
         if y.ndim > 1:
             y = y.mean(axis=-1)
         if sr != TARGET_SR:
-            # resample don gian bang noi suy tuyen tinh neu thieu librosa
-            import math
-            dur = len(y) / sr
-            n_new = int(dur * TARGET_SR)
-            x_old = np.linspace(0, 1, len(y))
-            x_new = np.linspace(0, 1, n_new)
-            y = np.interp(x_new, x_old, y).astype(np.float32)
-        return y
+            y = resample_to_16k(y, sr, TARGET_SR)
+        return np.asarray(y, dtype=np.float32)
+    except Exception as e_sf:
+        sf_err = e_sf
+    try:
+        import librosa
+        y, _ = librosa.load(path, sr=TARGET_SR, mono=True)
+        return y.astype(np.float32)
+    except Exception:
+        raise RuntimeError(
+            f"Khong doc duoc audio '{path}' (soundfile: {sf_err}). "
+            f"Dinh dang .m4a/.mp4 can ffmpeg; nen chuyen sang WAV/MP3/FLAC.")
 
 def split_with_overlap(audio: np.ndarray, chunk_sec=4.0, overlap_sec=0.5, sr=16000):
     n_chunk = int(chunk_sec * sr)
