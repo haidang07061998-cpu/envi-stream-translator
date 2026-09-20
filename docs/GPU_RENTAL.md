@@ -221,3 +221,45 @@ Modal ghi rõ trong [docs](https://modal.com/docs/guide/cold-start):
 - Nói thưa (1 câu mỗi 10 phút) → mỗi câu làm container thức thêm `scaledown_window`
   → nếu để 60s thì mỗi câu tốn ~1 xu, 6 câu/giờ ≈ **$0.06/giờ** — vẫn rẻ, nhưng nếu dùng
   rất thưa thì nên đặt `MODAL_KEEPWARM=2`.
+
+---
+
+## 9. URL đổi mỗi phiên — có cách nào cố định không?
+
+**Đúng: mỗi lần chạy `cloudflared tunnel --url ...` (Quick Tunnel) là một tên ngẫu nhiên mới.**
+Cloudflare Quick Tunnel là loại **ẩn danh**: không cần tài khoản, nhưng **không cam kết tên
+hay uptime**. Đó là cái giá của "0 đồng, mở là chạy".
+
+| Cách | Chi phí | URL cố định? | Ghi chú |
+|---|---|---|---|
+| **Cloudflare Quick Tunnel** (đang dùng) | **0đ** | ❌ **đổi mỗi phiên** | Không cần tài khoản |
+| **ngrok — gói Free** | **0đ** | ✅ **1 dev domain cố định** | Cần đăng ký; free có **trang cảnh báo interstitial**, 1GB + 20k request |
+| ngrok — Hobbyist | $10/tháng | ✅ | Không interstitial |
+| **Tên miền riêng + Cloudflare Named Tunnel** | ~$10/năm (tiền tên miền) | ✅ **ổn định nhất** | Cloudflare Tunnel miễn phí; chỉ tốn tiền mua tên miền |
+| Tailscale Funnel | 0đ | ✅ `*.ts.net` | Phải cài Tailscale trong Kaggle (userspace) — phức tạp, dễ vỡ |
+
+*(Giá ngrok lấy từ ngrok.com/pricing ngày 20/09/2026.)*
+
+### Giảm thao tác xuống **1 lệnh** (đã có sẵn trong repo)
+
+```powershell
+# 1) Trên Kaggle: bấm "Copy" ở góc cell (hoặc bôi đen dòng URL rồi Ctrl+C)
+# 2) Trên máy bạn:
+python scripts/set_gpu_url.py
+```
+Script tự: đọc **clipboard** → tìm URL → lưu vào `gpu_url.txt` → **kiểm tra máy đó có GPU thật
+không** → in ra `engine / device / asr`. Xong, mở app là chạy.
+
+```powershell
+python scripts/set_gpu_url.py --url https://abc.trycloudflare.com
+python scripts/set_gpu_url.py --text "<dán cả log cũng được>"
+python scripts/set_gpu_url.py --clear      # tắt GPU, quay về dịch tại máy (CPU)
+```
+
+Hàm trích URL ưu tiên đúng dịch vụ tunnel trước (trycloudflare → ngrok → ts.net), nên **dán cả
+log có lẫn link github.com/pypi.org vẫn tìm đúng**.
+
+> **Muốn URL cố định** thì chuyển sang **ngrok free**: tạo tài khoản, lấy authtoken, rồi trong
+> notebook chạy `ngrok http 8000 --domain=<tên>.ngrok-free.app` thay cho cloudflared.
+> Hệ thống đã sẵn sàng: client gửi kèm header `ngrok-skip-browser-warning` để trang cảnh báo
+> của ngrok không chặn request.

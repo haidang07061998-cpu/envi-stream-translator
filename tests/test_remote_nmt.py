@@ -201,6 +201,36 @@ class TestHopMatChanGpu(unittest.TestCase):
             self.assertEqual(effective_remote_url(), "")
 
 
+class TestExtractGpuUrl(unittest.TestCase):
+    """Moi phien Kaggle la mot URL khac -> nguoi dung dan ca log, phai tu tim ra URL."""
+
+    def test_tu_log_kaggle_that(self):
+        from src.config import extract_gpu_url
+        log = ("======================================================================\n"
+               "  URL CUA BAN:  https://reveal-pendant-colin-compatible.trycloudflare.com\n"
+               "    Noi tieng Anh   : https://reveal-pendant-colin-compatible.trycloudflare.com/m\n"
+               "  tai cloudflared...\n"
+               "$ wget -q -O /kaggle/working/cloudflared "
+               "https://github.com/cloudflare/cloudflared/releases/latest/download/x\n")
+        self.assertEqual(
+            extract_gpu_url(log),
+            "https://reveal-pendant-colin-compatible.trycloudflare.com",
+            "phai chon trycloudflare, khong duoc chon github.com")
+
+    def test_nhan_dien_ngrok_va_tailscale(self):
+        from src.config import extract_gpu_url
+        self.assertEqual(extract_gpu_url("mo: https://abc-1.ngrok-free.app/"),
+                         "https://abc-1.ngrok-free.app")
+        self.assertEqual(extract_gpu_url("https://may-gpu.tail1a2b.ts.net"),
+                         "https://may-gpu.tail1a2b.ts.net")
+
+    def test_khong_co_url(self):
+        from src.config import extract_gpu_url
+        self.assertEqual(extract_gpu_url("khong co gi o day"), "")
+        self.assertEqual(extract_gpu_url(""), "")
+        self.assertEqual(extract_gpu_url(None), "")
+
+
 class TestGpuUrlConfig(unittest.TestCase):
     """Tich hop: URL may GPU doc tu bien moi truong HOAC file gpu_url.txt."""
 

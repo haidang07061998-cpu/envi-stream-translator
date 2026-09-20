@@ -152,7 +152,8 @@ class RemoteNMT:
             try:
                 r = requests.post(f"{self.url}/translate",
                                   json={"text": t, "accurate": bool(accurate)},
-                                  timeout=self.timeout)
+                                  timeout=self.timeout,
+                                  headers={"ngrok-skip-browser-warning": "true"})
                 r.raise_for_status()
                 j = r.json()
                 vi = j.get("vi", "") or ""

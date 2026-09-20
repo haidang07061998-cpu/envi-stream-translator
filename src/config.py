@@ -9,6 +9,7 @@ Vi du:
 """
 from dataclasses import dataclass
 import os
+import re
 
 # Thu muc goc repo (src/..) - de tim ban model da tai san trong models/
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -130,6 +131,26 @@ def save_nmt_remote(url: str) -> str:
         f.write(f"# Dia chi may GPU thue (Kaggle/Colab/Modal). Doi moi phien thi sua file nay.\n")
         f.write(f"# De trong = dich ngay tai may (CPU).\n{url}\n")
     return url
+
+
+def extract_gpu_url(text: str) -> str:
+    """Trich dia chi may GPU tu mot doan van ban (vd dan ca log Kaggle/Colab).
+
+    Vi moi phien Kaggle la mot URL khac, nguoi dung thuong copy ca dong log:
+        "  URL CUA BAN:  https://abc-xyz.trycloudflare.com"
+    Ham nay tim ra dung URL do, uu tien cac dich vu tunnel quen thuoc truoc khi
+    lay URL https dau tien (vi trong log con co github.com, pypi.org...).
+    """
+    if not text:
+        return ""
+    for pat in (r"https://[a-z0-9-]+\.trycloudflare\.com",
+                r"https://[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io)",
+                r"https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net"):
+        m = re.search(pat, text, re.I)
+        if m:
+            return m.group(0).rstrip("/")
+    m = re.search(r"https://[A-Za-z0-9._-]+(?::\d+)?", text)
+    return m.group(0).rstrip("/") if m else ""
 
 
 def check_remote(url: str, timeout: float = 8.0) -> dict:
