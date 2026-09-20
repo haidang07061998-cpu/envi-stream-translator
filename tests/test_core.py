@@ -487,7 +487,39 @@ class TestSummarizer(unittest.TestCase):
         self.assertEqual(r["mode"], "actions")
 
 
-# --------------------------------------------------------------------- 10. audio
+# --------------------------------------------------------------------- 10. NMT guards
+class TestNMTGuards(unittest.TestCase):
+    """Loi that: CT2 int8_float32 lam decoder VinAI lap vo nghia -> phai TAT mac dinh
+    va phai co guard chan rac."""
+
+    def test_phat_hien_lap_vo_nghia(self):
+        from src.nmt import looks_degenerate
+        self.assertTrue(looks_degenerate(
+            "Chung Chung Chung chung Chung Chung We Chung Chung Can"))
+        self.assertTrue(looks_degenerate(
+            "qua qua qua qua cao qua qua Qua qua cao cao qua cao"))
+        self.assertFalse(looks_degenerate(
+            "Chung ta can kiem tra ngan sach truoc khi trien khai"))
+        self.assertFalse(looks_degenerate(
+            "Nen kiem tra do tre API truoc khi chung ta trien khai vao production"))
+        self.assertFalse(looks_degenerate("Dung roi"))
+        self.assertFalse(looks_degenerate(""))
+        self.assertFalse(looks_degenerate(None))
+
+    def test_ct2_mac_dinh_tat(self):
+        from src.nmt import ct2_enabled
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("ENABLE_CT2", "DISABLE_CT2")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertFalse(ct2_enabled(), "CT2 phai TAT mac dinh")
+        with mock.patch.dict(os.environ, {"ENABLE_CT2": "1"}, clear=False):
+            self.assertTrue(ct2_enabled())
+        with mock.patch.dict(os.environ, {"ENABLE_CT2": "1", "DISABLE_CT2": "1"},
+                             clear=False):
+            self.assertFalse(ct2_enabled())
+
+
+# --------------------------------------------------------------------- 11. audio
 class TestAudioUtils(unittest.TestCase):
     """Loi that: librosa.load() tren MP3 roi vao audioread -> goi ffmpeg -> treo.
     Gio load_audio_16k uu tien soundfile + scipy.resample_poly."""

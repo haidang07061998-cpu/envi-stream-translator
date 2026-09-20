@@ -57,11 +57,19 @@ tiếng của *mọi* ứng dụng (Zoom/Teams/Meet/YouTube) mà không cần ex
 `chrome://extensions` → bật *Developer mode* → **Load unpacked** → chọn thư mục `extension/`.
 Xem `extension/README.md`.
 
-### E. Tăng tốc NMT (khuyến nghị, chạy 1 lần khi còn mạng)
+### E. Tăng tốc NMT — đọc kỹ trước khi bật
 ```powershell
-python scripts/convert_nmt_ct2.py          # -> models/ct2-en2vi-v2-int8 (nhanh 4-5x, RAM /4)
 python scripts/download_offline_models.py  # tải sẵn model offline (gồm Piper vi_VN)
+python scripts/convert_nmt_ct2.py          # convert CT2 (xem cảnh báo bên dưới)
 ```
+> ⚠️ **CT2 mặc định TẮT — đường "nhanh 4-5x" trong code gốc KHÔNG dùng được.**
+> Đo thực tế trên máy này: CT2 của VinAI en2vi-v2 sinh **văn bản lặp vô nghĩa** với nhiều
+> câu ngắn — `"We need to check the budget."` → `"Chúng Chúng Chúng chúng Chúng Chúng We Chúng..."`
+> — trong khi cùng câu đó qua HF PyTorch cho `"Chúng ta cần kiểm tra ngân sách."`.
+> **Đã thử cả `int8_float32` và `float32`: cả hai đều hỏng** ⇒ lỗi nằm ở bước convert mBART
+> sang CTranslate2, không phải ở lượng tử hoá. Vì vậy hệ thống **không tự bật CT2**.
+> Nếu vẫn muốn thử: `set ENABLE_CT2=1` (có self-test lúc khởi động + guard `looks_degenerate()`
+> tự tắt sau 3 lần sinh rác, nên rác không bao giờ tới người dùng).
 
 ---
 
@@ -137,8 +145,10 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 | `MAX_SEG` | `8.0` | ép chốt câu nếu nói liên tục |
 | `OVERLAP_KEEP` | `0.5` | đuôi buffer giữ lại (chống mất chữ biên) |
 | `SPEAK_RMS` / `ASR_GATE_RMS` | `0.008` / `0.004` | ngưỡng "đang nói" / ngưỡng bỏ qua ASR |
-| `ACCURATE_BEAMS` | auto (GPU 4 / CPU 2) | beam cho câu final |
-| `CT2_EN2VI` / `DISABLE_CT2` | `models/ct2-en2vi-v2-int8` | đường nhanh CTranslate2 int8 |
+| `ACCURATE_BEAMS` | auto (GPU 4 / CPU 1) | beam cho câu final |
+| `ENABLE_CT2` | `0` (**TẮT**) | bật CTranslate2 int8 — chỉ bật sau khi tự kiểm tra chất lượng |
+| `DISABLE_CT2` | `0` | tắt cứng CT2 (thắng cả `ENABLE_CT2`) |
+| `CT2_EN2VI` / `CT2_QUANT` | `models/ct2-en2vi-v2-int8` / `int8_float32` | thư mục CT2 / kiểu lượng tử hoá khi convert |
 | `SPEAKER_THRESHOLD` | `0.60` | ngưỡng tách người nói |
 | `TTS_ENGINE` | auto (`edge`/`offline`) | giọng đọc tiếng Việt |
 | `OFFLINE` / `CONFIDENTIAL` | `0` | chế độ họp mật, không ra Internet |
@@ -224,17 +234,19 @@ scripts/             # tải model offline, convert CT2
 | 23 | `load_audio_16k` gọi `librosa` trước | đọc MP3 có thể **treo >4 phút** (librosa → audioread → ffmpeg subprocess) | ưu tiên `soundfile` + `scipy.resample_poly`, fail-fast nếu file không tồn tại |
 | 24 | Model nội bộ `models/` bị bỏ qua (load theo ID HuggingFace) | "offline 100%" vẫn phụ thuộc cache HF | `local_model_dir()` + `resolve_nmt_path()`, `download_offline_models.py` tải thẳng vào `models/` |
 | 25 | `sentencepiece` không đọc được đường dẫn có dấu tiếng Việt | tokenizer báo `Unable to load vocabulary from file` khi repo nằm trong `F:\5 bài test\...` | trả về **đường dẫn tương đối ASCII**, fallback cache HF + cảnh báo |
-| 26 | CPU final beam = 2 | đo thực tế VinAI fp32 tốn **~6–20s/câu** trên CPU | mặc định CPU beam = 1; bắt buộc CT2 int8 để đạt realtime |
+| 26 | CPU final beam = 2 | đo thực tế VinAI fp32 tốn **~5–17s/câu** trên CPU | mặc định CPU beam = 1 |
+| 27 | CT2 làm decoder **lặp vô nghĩa** — thử cả `int8_float32` và `float32` đều hỏng | nếu bật mặc định thì bản dịch thành rác mà không báo lỗi; lời hứa "nhanh 4-5x" trong code gốc là sai | CT2 **mặc định TẮT** + self-test khi khởi động + `looks_degenerate()` tự tắt sau 3 lần sinh rác |
+| 28 | CLI `ct2-transformers-converter` lỗi `unexpected keyword argument 'dtype'` | không convert được CT2 trên cặp phiên bản transformers/ctranslate2 hiện tại | script tự vá (`dtype` ↔ `torch_dtype`) rồi gọi Python API, kèm bước verify |
 
 ---
 
 ## 8. Hạn chế đã biết
 
-- **CPU chỉ đạt realtime khi có CT2 int8.** Đo thực tế trên máy này: VinAI 448M **fp32**
-  tốn **~2–3 phút cho 1 câu** với beam=2 trên CPU. Vì vậy mặc định CPU dùng **beam=1**, và
-  **bắt buộc** chạy `python scripts/convert_nmt_ct2.py` (int8, nhanh 4–5x) nếu muốn dịch
-  trực tiếp trên CPU. Hệ thống in cảnh báo khi thiếu CT2 và hiện engine đang dùng ở
-  `/health`, `nmt.stats()`, và trên thanh trạng thái của app desktop.
+- **CPU chưa đạt realtime với model gốc.** Đo thực tế trên máy này (CPU, fp32, beam=1):
+  **~5–17s cho 1 câu** (VinAI 448M). Đường tăng tốc CT2 đã bị tắt vì **làm hỏng chất lượng**
+  (thử cả int8_float32 và float32 — xem mục 1E). Muốn realtime cần: GPU, hoặc một model NMT
+  nhỏ/đã tối ưu khác. Hệ thống **không che giấu** chuyện này: `/health`, `nmt.stats()` và
+  thanh trạng thái desktop đều hiện engine đang dùng và lý do.
 - **Đường dẫn repo không nên có dấu tiếng Việt.** `sentencepiece` (thư viện C++ của VinAI)
   trên Windows **không đọc được** đường dẫn chứa ký tự ngoài ASCII — tokenizer sẽ báo
   `Unable to load vocabulary from file`. `src/config.py:local_model_dir()` đã tự xử lý bằng

@@ -39,6 +39,43 @@ def split_sentences_en(text: str):
     return out or [t]
 
 
+def looks_degenerate(text: str) -> bool:
+    """Phat hien decoder bi LAP VO NGHIA.
+
+    Do thuc te: CT2 int8_float32 cua VinAI en2vi-v2 sinh ra
+    'Chung Chung Chung chung Chung Chung We Chung Chung Can ...' — cau dung bi lap
+    hang chuc lan. Neu khong chan, ban dich se rac ma khong bao loi.
+    """
+    words = [w for w in (text or "").split() if w]
+    if len(words) < 6:
+        return False
+    low = [w.lower().strip(".,!?…:;\"'()") for w in words]
+    if len(set(low)) / len(low) < 0.45:          # qua it tu khac nhau
+        return True
+    from collections import Counter
+    bigrams = Counter(zip(low, low[1:]))
+    if bigrams and bigrams.most_common(1)[0][1] >= 3:   # 2-gram lap >= 3 lan
+        return True
+    run = 1
+    for a, b in zip(low, low[1:]):
+        run = run + 1 if a == b else 1
+        if run >= 3:                              # 1 tu lap lien tiep >= 3 lan
+            return True
+    return False
+
+
+CT2_SELFTEST_SENTENCE = "We need to check the API latency before we deploy."
+
+
+def ct2_enabled() -> bool:
+    """CT2 co duoc phep dung khong. MAC DINH TAT (xem ghi chu trong NMTTranslator).
+
+    Do thuc te: CT2 int8_float32 lam hong chat luong VinAI en2vi-v2 voi nhieu cau ngan.
+    """
+    return (os.getenv("ENABLE_CT2", "0") == "1"
+            and os.getenv("DISABLE_CT2", "0") != "1")
+
+
 class NMTTranslator:
     """NMT En->Vi. Live: beam=1 (~80-170ms CPU voi CT2 int8). Final: beam cao hon."""
 
@@ -83,10 +120,21 @@ class NMTTranslator:
         self.is_vinai = "vinai-translate" in low
         self.is_nllb = "nllb" in low
 
-        # ---------------- thu CTranslate2 truoc (nhanh nhat) ----------------
+        # ---------------- thu CTranslate2 (PHAI BAT TAY bang ENABLE_CT2=1) ----------------
+        # MAC DINH TAT. Ly do do thuc te: CT2 cua VinAI en2vi-v2 sinh ra cau lap vo nghia
+        # voi nhieu cau ngan (vd 'We need to check the budget.' -> 'Chung Chung Chung
+        # chung Chung Chung We Chung...'), trong khi cung cau do qua HF PyTorch lai dung.
+        # DA THU CA int8_float32 VA float32 -> ca hai deu hong => loi o buoc convert mBART
+        # sang CTranslate2, khong phai o luong tu hoa. Nhanh ma rac thi te hon cham ma dung.
+        #   Bat: set ENABLE_CT2=1   (van co self-test + guard chong lap)
+        #   Tat han: set DISABLE_CT2=1
         self.ct2 = None
         self.ct2_tok = None
-        if os.getenv("DISABLE_CT2", "0") != "1":
+        want_ct2 = ct2_enabled()
+        if not want_ct2:
+            self.ct2_error = ("CT2 dang TAT (mac dinh). Bat bang ENABLE_CT2=1 neu ban "
+                              "da kiem tra chat luong.")
+        else:
             candidates = [ct2_path, os.getenv("CT2_EN2VI"), "models/ct2-en2vi-v2-int8",
                           "ct2-en2vi-v2-int8"]
             for c in candidates:
@@ -101,11 +149,17 @@ class NMTTranslator:
                         self.ct2_tok = (_AT.from_pretrained(model_id, src_lang=self.src)
                                         if self.is_vinai else _AT.from_pretrained(model_id))
                         self.ct2_dir = c
+                        self.ct2_error = None
                         break
                     except Exception as e:
                         self.ct2 = None
                         self.ct2_tok = None
                         self.ct2_error = f"{type(e).__name__}: {e}"
+
+        # --- SELF-TEST CT2: luong tu hoa co the lam decoder lap vo nghia ---
+        # Phai chay TRUOC khi chon nhanh HF, neu khong se khong con model nao de dung.
+        if self.ct2 is not None and self.is_vinai:
+            self._ct2_selftest()
 
         # ---------------- HF PyTorch ----------------
         self.pipe = None
@@ -141,6 +195,33 @@ class NMTTranslator:
         self.cache_size = int(cache_size)
         self.cache_hits = 0
         self.cache_misses = 0
+        self.ct2_degenerate = 0
+
+    # ------------------------------------------------------------------
+    def _ct2_selftest(self):
+        """Dich thu 1 cau co dinh. Neu lap vo nghia -> TAT CT2 ngay.
+
+        Do thuc te: CT2 int8_float32 lam hong chat luong VinAI en2vi-v2 tren may nay
+        (sinh 'Chung Chung Chung chung...'). Tha cham ma dung con hon nhanh ma rac.
+        """
+        try:
+            out = self._ct2_vinai(CT2_SELFTEST_SENTENCE, 1)
+        except Exception as e:
+            self.ct2_error = f"self-test loi: {type(e).__name__}: {e}"
+            print(f"[NMT] CT2 self-test loi ({self.ct2_error}) -> dung HF PyTorch.")
+            self.ct2 = None
+            self.ct2_tok = None
+            return
+        if not out or looks_degenerate(out):
+            self.ct2_error = f"self-test: ket qua lap vo nghia ({out[:70]!r})"
+            print(f"[NMT] {self.ct2_error}")
+            print("[NMT] => TAT CT2, dung HF PyTorch (cham hon nhung DUNG). "
+                  "Co the thu lai voi quantization float32: "
+                  "python scripts/convert_nmt_ct2.py")
+            self.ct2 = None
+            self.ct2_tok = None
+            return
+        print(f"[NMT] CT2 self-test OK: {out!r}")
 
     # ------------------------------------------------------------------
     @property
@@ -227,7 +308,19 @@ class NMTTranslator:
 
         if self.ct2 is not None and self.is_vinai:
             try:
-                return self._post(self._ct2_vinai(t, beams))
+                out = self._ct2_vinai(t, beams)
+                if out and not looks_degenerate(out):
+                    return self._post(out)
+                # CT2 sinh ket qua lap -> KHONG tra rac cho nguoi dung
+                self.ct2_degenerate += 1
+                print(f"[NMT] CT2 tra ket qua lap (lan {self.ct2_degenerate}) "
+                      f"-> dung HF cho cau nay")
+                if self.ct2_degenerate >= 3:
+                    self.ct2_error = "tat sau 3 lan sinh ket qua lap"
+                    print("[NMT] => TAT CT2 (chat luong khong dam bao), "
+                          "dung HF PyTorch tu day.")
+                    self.ct2 = None
+                    self.ct2_tok = None
             except Exception as e:
                 if not self._ct2_failed_once:
                     self._ct2_failed_once = True
