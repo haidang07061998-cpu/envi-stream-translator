@@ -413,3 +413,25 @@ python scripts/bench_gpu_remote.py --url https://<ten>.trycloudflare.com
 ```
 Script in ra: `server_ms` (GPU dịch thật), thời gian từ máy bạn (gồm mạng), BLEU/chrF, và bảng
 so sánh CPU vs GPU — đủ số liệu để đưa vào chương đánh giá của khóa luận.
+
+### Đã tích hợp vào hệ thống tới đâu
+
+| Việc | Trạng thái |
+|---|---|
+| Chuyển NMT sang GPU từ xa | ✅ **tự động** — chỉ cần có URL |
+| Server local (`app/server.py`) | ✅ đã nối qua `build_nmt()` |
+| App desktop (`desktop_app_v2.py`) | ✅ có ô **GPU THUÊ** để dán URL + nút **KIỂM TRA + LƯU** + hiện `✔ GPU (hf-cuda)` |
+| Demo Gradio / Saydi | ✅ đã nối |
+| Lưu URL giữa các lần chạy | ✅ ghi vào `gpu_url.txt` — không phải gõ lại |
+| Phát hiện URL chết | ✅ hiện `✘ GPU không kết nối được`; **mic + phụ đề EN vẫn chạy** |
+| Bật phiên Kaggle | ❌ **thủ công** — Kaggle bắt buộc có người đăng nhập bấm Run |
+| URL đổi mỗi phiên Kaggle | ❌ phải dán lại URL mới (Kaggle cấp URL khác mỗi phiên) |
+
+**Cách dùng từ giờ (3 bước):**
+1. Kaggle: chạy cell → **copy URL** in ra
+2. Mở app desktop → dán URL vào ô **GPU THUÊ** → bấm **KIỂM TRA + LƯU**
+   (thấy `✔ GPU (hf-cuda)` là đúng) → **khởi động lại app**
+3. Các lần sau: **chỉ cần mở app** — URL đã lưu trong `gpu_url.txt`
+
+Không thích dùng UI thì sửa trực tiếp file `gpu_url.txt` (1 dòng URL, để trống = dùng CPU máy).
+Hoặc đặt biến môi trường `NMT_REMOTE_URL` (ưu tiên cao nhất, tiện cho 1 phiên tạm).

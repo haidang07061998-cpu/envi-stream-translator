@@ -71,6 +71,83 @@ def _ascii_ok(path: str) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Dia chi may GPU thue (Kaggle / Colab / Modal)
+# ---------------------------------------------------------------------------
+GPU_URL_FILE = "gpu_url.txt"       # dat o thu muc goc repo, ghi 1 dong URL
+GPU_URL_ENV = "NMT_REMOTE_URL"
+
+
+def resolve_nmt_remote() -> str:
+    """Tim dia chi may GPU, theo thu tu uu tien:
+
+    1. Bien moi truong NMT_REMOTE_URL   (dat tam cho 1 phien)
+    2. File `gpu_url.txt` o goc repo    (nho san giua cac lan chay)
+    3. File `.env` voi dong NMT_REMOTE_URL=...
+
+    Tra ve chuoi rong neu khong co -> dich ngay tai may (che do CPU binh thuong).
+    """
+    url = (os.getenv(GPU_URL_ENV) or "").strip()
+    if url:
+        return url.rstrip("/")
+
+    p = os.path.join(_BASE, GPU_URL_FILE)
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        return line.rstrip("/")
+        except OSError:
+            pass
+
+    p = os.path.join(_BASE, ".env")
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.lower().startswith(GPU_URL_ENV.lower() + "="):
+                        v = line.split("=", 1)[1].strip().strip("'\"")
+                        if v:
+                            return v.rstrip("/")
+        except OSError:
+            pass
+    return ""
+
+
+def save_nmt_remote(url: str) -> str:
+    """Luu dia chi may GPU vao gpu_url.txt de lan sau khong phai dan lai."""
+    url = (url or "").strip().rstrip("/")
+    p = os.path.join(_BASE, GPU_URL_FILE)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(f"# Dia chi may GPU thue (Kaggle/Colab/Modal). Doi moi phien thi sua file nay.\n")
+        f.write(f"# De trong = dich ngay tai may (CPU).\n{url}\n")
+    return url
+
+
+def check_remote(url: str, timeout: float = 8.0) -> dict:
+    """Kiem tra may GPU con song va CO DUNG GPU khong.
+
+    Tra ve {ok, engine, device, asr, loaded, error}. Dung de hien thi trang thai
+    cho nguoi dung biet minh dang chay GPU hay CPU.
+    """
+    if not url:
+        return {"ok": False, "error": "chua co dia chi may GPU"}
+    try:
+        import requests
+        r = requests.get(url.rstrip("/") + "/health", timeout=timeout)
+        r.raise_for_status()
+        h = r.json() or {}
+        nmt = h.get("nmt") or {}
+        return {"ok": bool(h.get("loaded")), "loaded": h.get("loaded"),
+                "engine": nmt.get("engine"), "device": nmt.get("device"),
+                "asr": h.get("asr"), "error": h.get("error")}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 def _env_bool(name: str, default: bool = False) -> bool:
     v = os.getenv(name)
     if v is None:

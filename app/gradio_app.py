@@ -8,12 +8,12 @@ def get_pipe():
     if _pipe is None:
         from src.config import DEFAULT
         from src.asr import FasterWhisperASR
-        from src.nmt import NMTTranslator
+        from src.nmt import build_nmt
         from src.tts import EdgeTTSWrapper
         from src.pipeline import CascadedPipeline
         _pipe = CascadedPipeline(
             FasterWhisperASR(DEFAULT.asr_model, DEFAULT.asr_device, DEFAULT.asr_compute),
-            NMTTranslator(DEFAULT.nmt_model, DEFAULT.nmt_src, DEFAULT.nmt_tgt),
+            build_nmt(DEFAULT.nmt_model, DEFAULT.nmt_src, DEFAULT.nmt_tgt),
             EdgeTTSWrapper(DEFAULT.tts_voice, DEFAULT.tts_rate))
     return _pipe
 

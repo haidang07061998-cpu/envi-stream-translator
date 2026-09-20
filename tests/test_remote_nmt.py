@@ -21,6 +21,19 @@ from src.nmt import RemoteNMT, build_nmt, remote_nmt_url   # noqa: E402
 class _Handler(BaseHTTPRequestHandler):
     received = []
     fail = False
+    health = {"loaded": True, "asr": "fake", "nmt": {"engine": "hf-cuda", "device": "cuda"}}
+
+    def do_GET(self):
+        if self.path.startswith("/health"):
+            payload = json.dumps(_Handler.health).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        self.send_response(404)
+        self.end_headers()
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
@@ -129,6 +142,91 @@ class TestBuildNmt(unittest.TestCase):
             n = build_nmt("vinai/khong-can-tai", "en_XX", "vi_VN")
             self.assertIsInstance(n, RemoteNMT)
             self.assertEqual(n.engine, "remote:http://gpu:8000")
+
+
+class TestGpuUrlConfig(unittest.TestCase):
+    """Tich hop: URL may GPU doc tu bien moi truong HOAC file gpu_url.txt."""
+
+    def test_doc_url_tu_file_gpu_url_txt(self):
+        import src.config as cfg
+        import tempfile
+        env = {k: v for k, v in os.environ.items() if k != "NMT_REMOTE_URL"}
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, cfg.GPU_URL_FILE), "w", encoding="utf-8") as f:
+                f.write("# ghi chu\nhttps://abc.trycloudflare.com/\n")
+            with mock.patch.dict(os.environ, env, clear=True), \
+                 mock.patch.object(cfg, "_BASE", d):
+                self.assertEqual(cfg.resolve_nmt_remote(),
+                                 "https://abc.trycloudflare.com")
+            # bien moi truong phai THANG file
+            with mock.patch.dict(os.environ, {"NMT_REMOTE_URL": "https://env-url"},
+                                 clear=False), mock.patch.object(cfg, "_BASE", d):
+                self.assertEqual(cfg.resolve_nmt_remote(), "https://env-url")
+
+    def test_luu_roi_doc_lai(self):
+        import src.config as cfg
+        import tempfile
+        env = {k: v for k, v in os.environ.items() if k != "NMT_REMOTE_URL"}
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cfg, "_BASE", d):
+            cfg.save_nmt_remote("https://xyz.trycloudflare.com/")
+            self.assertEqual(cfg.resolve_nmt_remote(), "https://xyz.trycloudflare.com")
+            cfg.save_nmt_remote("")            # tat GPU tu xa
+            self.assertEqual(cfg.resolve_nmt_remote(), "")
+
+    def test_khong_co_gi_thi_rong(self):
+        import src.config as cfg
+        import tempfile
+        env = {k: v for k, v in os.environ.items() if k != "NMT_REMOTE_URL"}
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(cfg, "_BASE", d):
+            self.assertEqual(cfg.resolve_nmt_remote(), "")
+
+
+class TestCheckRemote(unittest.TestCase):
+    """check_remote() cho UI biet dang chay GPU hay CPU."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = HTTPServer(("127.0.0.1", 0), _Handler)
+        cls.url = f"http://127.0.0.1:{cls.srv.server_address[1]}"
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        time.sleep(0.2)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+
+    def test_phat_hien_dung_gpu(self):
+        from src.config import check_remote
+        _Handler.health = {"loaded": True, "asr": "large-v3-turbo",
+                           "nmt": {"engine": "hf-cuda", "device": "cuda"}}
+        info = check_remote(self.url, timeout=5)
+        self.assertTrue(info["ok"])
+        self.assertEqual(info["device"], "cuda")
+        self.assertEqual(info["engine"], "hf-cuda")
+        self.assertEqual(info["asr"], "large-v3-turbo")
+
+    def test_canh_bao_khi_khong_co_gpu(self):
+        from src.config import check_remote
+        _Handler.health = {"loaded": True, "asr": "tiny.en",
+                           "nmt": {"engine": "hf-cpu", "device": "cpu"}}
+        info = check_remote(self.url, timeout=5)
+        self.assertTrue(info["ok"])
+        self.assertEqual(info["device"], "cpu")
+
+    def test_url_chet_tra_ve_loi_chu_khong_nem(self):
+        from src.config import check_remote
+        info = check_remote("http://127.0.0.1:1", timeout=2)
+        self.assertFalse(info["ok"])
+        self.assertIsNotNone(info["error"])
+
+    def test_chua_co_url(self):
+        from src.config import check_remote
+        info = check_remote("", timeout=2)
+        self.assertFalse(info["ok"])
 
 
 if __name__ == "__main__":

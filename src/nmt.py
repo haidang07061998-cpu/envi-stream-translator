@@ -81,8 +81,13 @@ def ct2_enabled() -> bool:
 
 
 def remote_nmt_url() -> str:
-    """Dia chi may GPU thue (neu co). Rong = dich ngay tai may."""
-    return (os.getenv("NMT_REMOTE_URL", "") or "").strip().rstrip("/")
+    """Dia chi may GPU thue (neu co). Rong = dich ngay tai may.
+
+    Tim theo thu tu: bien NMT_REMOTE_URL -> file gpu_url.txt -> .env
+    (xem src/config.py:resolve_nmt_remote)
+    """
+    from .config import resolve_nmt_remote
+    return resolve_nmt_remote()
 
 
 class RemoteNMT:

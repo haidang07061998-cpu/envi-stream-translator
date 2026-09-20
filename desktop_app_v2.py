@@ -27,7 +27,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
-from src.config import DEFAULT
+from src.config import DEFAULT, resolve_nmt_remote, save_nmt_remote, check_remote
 
 # 16 kHz la chuan cua ASR; lay tu config, khong hardcode.
 SR = DEFAULT.sample_rate
@@ -349,6 +349,8 @@ class App:
         self._src_name = ""
         self._ctx_info = {"scenario": "event", "terms": 0, "mode": DEFAULT.mode}
         self._build_ui()
+        # neu da luu URL may GPU -> kiem tra xem con song khong (hien thi len UI)
+        self.root.after(800, self._probe_gpu_bg)
         threading.Thread(target=load_models_bg, args=(self.set_status,), daemon=True).start()
         self.root.after(200, self.poll_ui)
         self._bind_keys()
@@ -438,6 +440,31 @@ class App:
                              "Áp dụng được GIỮA PHIÊN,\nkhông cần khởi động lại."),
                  bg=CARD, fg="#64748b", font=("Segoe UI", 8),
                  justify="left").pack(side="left", anchor="n")
+
+        # --- MAY GPU THUE (Kaggle/Colab/Modal): dan URL de dich tren GPU ---
+        row3 = tk.Frame(ctx, bg=CARD)
+        row3.pack(fill="x", padx=8, pady=(0, 6))
+        tk.Label(row3, text="GPU THUÊ", bg=CARD, fg=WARN,
+                 font=("Segoe UI", 10, "bold")).pack(side="left")
+        tk.Label(row3, text="URL máy GPU:", bg=CARD, fg="#9fb3ff",
+                 font=("Segoe UI", 9)).pack(side="left", padx=(10, 2))
+        self.gpu_var = tk.StringVar(value=resolve_nmt_remote())
+        tk.Entry(row3, textvariable=self.gpu_var, width=44, bg="#020617", fg="white",
+                 insertbackground="white", relief="flat").pack(side="left", ipady=3)
+        tk.Button(row3, text="KIỂM TRA + LƯU", bg="#22c55e", fg="#04120a",
+                  font=("Segoe UI", 9, "bold"), relief="flat", padx=8, pady=4,
+                  command=self.check_gpu).pack(side="left", padx=6)
+        tk.Button(row3, text="DÙNG MÁY NÀY (CPU)", bg=CARD, fg="#e5e7eb",
+                  font=("Segoe UI", 9), relief="flat", padx=8, pady=4,
+                  command=self.use_local_cpu).pack(side="left")
+        self.gpu_lbl = tk.Label(row3, text="", bg=CARD, fg="#9fb3ff",
+                                font=("Segoe UI", 9))
+        self.gpu_lbl.pack(side="left", padx=6)
+        tk.Label(ctx, text=("Dán URL https://...trycloudflare.com từ Kaggle/Colab rồi bấm "
+                            "KIỂM TRA + LƯU.\nĐể trống = dịch ngay tại máy (CPU). "
+                            "Đổi phiên Kaggle thì dán URL mới."),
+                 bg=CARD, fg="#64748b", font=("Segoe UI", 8), justify="left").pack(
+                     anchor="w", padx=10, pady=(0, 6))
 
         self.status = tk.Label(self.root, text="Đang khởi động...", bg=CARD,
                                fg=WARN, anchor="w", font=("Segoe UI", 10), padx=10, pady=6)
@@ -759,6 +786,11 @@ class App:
                     self.commit_final_en(data)
                 elif kind == "vi_final":
                     self.patch_vi_final(data)
+                elif kind == "gpu_check":
+                    try:
+                        data()          # data la ham callback (chay tren UI thread)
+                    except Exception as e:
+                        log_mic_error("gpu-check-ui", e)
         except queue.Empty:
             pass
         except Exception:
@@ -934,6 +966,87 @@ class App:
         w.config(state="disabled")
 
     # ---------- AI Context Engine ----------
+    def _probe_gpu_bg(self):
+        """Khi mo app: kiem tra may GPU da luu trong gpu_url.txt con song khong."""
+        url = resolve_nmt_remote()
+        if not url:
+            return
+
+        def _work():
+            info = check_remote(url, timeout=10)
+
+            def _done():
+                if not info.get("ok"):
+                    self.gpu_lbl.config(text="✘ GPU không kết nối được", fg="#fca5a5")
+                    return
+                dev = info.get("device")
+                if dev == "cuda":
+                    self.gpu_lbl.config(text=f"✔ GPU ({info.get('engine')})", fg="#86efac")
+                else:
+                    self.gpu_lbl.config(text=f"⚠ không có GPU ({dev})", fg=WARN)
+            q_ui.put(("gpu_check", _done))
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def check_gpu(self):
+        """Kiem tra may GPU thue roi luu vao gpu_url.txt.
+
+        Chi gui TEXT len GPU -> audio khong roi khoi may. May nay nhe RAM hon
+        (khong giu model NMT 1.8GB).
+        """
+        url = (self.gpu_var.get() or "").strip().rstrip("/")
+        if not url:
+            self.use_local_cpu()
+            return
+        self.gpu_lbl.config(text="đang kiểm tra...", fg=WARN)
+        self.root.update_idletasks()
+
+        def _work():
+            info = check_remote(url, timeout=12)
+            def _done():
+                if not info.get("ok"):
+                    self.gpu_lbl.config(text="✘ không kết nối được", fg="#fca5a5")
+                    messagebox.showerror(
+                        "Không kết nối được máy GPU",
+                        f"{url}\n\n{info.get('error')}\n\n"
+                        "Kiểm tra:\n"
+                        "• Cell Kaggle/Colab còn đang chạy không?\n"
+                        "• URL có đúng không (đổi mỗi phiên)?\n"
+                        "• Đã bật Internet cho notebook chưa?")
+                    return
+                dev = info.get("device") or "?"
+                eng = info.get("engine") or "?"
+                if dev == "cuda":
+                    self.gpu_lbl.config(text=f"✔ GPU ({eng})", fg="#86efac")
+                else:
+                    self.gpu_lbl.config(
+                        text=f"⚠ máy đó KHÔNG có GPU ({eng}/{dev})", fg=WARN)
+                try:
+                    save_nmt_remote(url)
+                except Exception as e:
+                    log_mic_error("save-gpu-url", e)
+                messagebox.showinfo(
+                    "Đã lưu",
+                    f"Đã lưu URL vào gpu_url.txt\n\n"
+                    f"engine : {eng}\ndevice : {dev}\nasr    : {info.get('asr')}\n\n"
+                    "KHỞI ĐỘNG LẠI app để dùng GPU từ xa.\n"
+                    "(Lúc đó chỉ TEXT được gửi lên GPU — audio không rời máy.)")
+            q_ui.put(("gpu_check", _done))
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def use_local_cpu(self):
+        """Tat che do GPU tu xa: dich ngay tai may (khong can Internet)."""
+        self.gpu_var.set("")
+        try:
+            save_nmt_remote("")
+        except Exception:
+            pass
+        self.gpu_lbl.config(text="đang dùng CPU của máy này", fg="#9fb3ff")
+        messagebox.showinfo("Đã tắt GPU từ xa",
+                            "Đã xoá URL trong gpu_url.txt.\n"
+                            "Khởi động lại app để dịch ngay tại máy (CPU).")
+
     def apply_context(self):
         """Ap dung ngay giua phien: ASR initial_prompt + NMT glossary. Khong can restart."""
         scen = SCEN_KEY.get(self.sc_var.get(), "event")
