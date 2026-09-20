@@ -435,3 +435,24 @@ so sánh CPU vs GPU — đủ số liệu để đưa vào chương đánh giá 
 
 Không thích dùng UI thì sửa trực tiếp file `gpu_url.txt` (1 dòng URL, để trống = dùng CPU máy).
 Hoặc đặt biến môi trường `NMT_REMOTE_URL` (ưu tiên cao nhất, tiện cho 1 phiên tạm).
+
+### Có cần `localhost` không?
+
+**Tuỳ cách dùng — và cách đang cấu hình thì KHÔNG cần.**
+
+| Cách dùng | `localhost`? | Cái gì chạy ở đâu |
+|---|---|---|
+| **App desktop + GPU từ xa** ⭐ (đang cấu hình) | ❌ **KHÔNG** | mic + ASR + giao diện ở máy bạn; chỉ **TEXT** → GPU Kaggle |
+| Mở thẳng URL Kaggle: `https://<tên>.trycloudflare.com/m` | ❌ **KHÔNG** | tất cả trên Kaggle; máy bạn chỉ là trình duyệt |
+| Server local + GPU từ xa | ✅ `http://localhost:8000` | ASR + PWA ở máy; TEXT → GPU Kaggle |
+| Offline hoàn toàn (CPU) | ✅ hoặc dùng app desktop | tất cả ở máy, không cần mạng |
+| **Phòng cho người nghe + QR** | ⚠️ cần **một** server | chạy trên Kaggle (URL công khai, ai cũng vào được) **hoặc** localhost/LAN |
+
+Ghi nhớ:
+- **App desktop là app native** (`desktop_app_v2.py`) — nó **không** mở uvicorn, **không** dùng
+  localhost. Chỉ cần `gpu_url.txt` là chạy.
+- **Mic trong trình duyệt** chỉ hoạt động trên `localhost` **hoặc** `https://`. Vì URL Kaggle là
+  `https`, mic chạy được cả trên điện thoại — điều mà `http://<IP-LAN>` không làm được.
+- Muốn người khác **quét QR vào nghe** thì phải có server: dùng URL Kaggle (công khai) hoặc
+  chạy server local (`python -m uvicorn app.server:app --host 0.0.0.0 --port 8000`) rồi cho
+  điện thoại vào `http://<IP-LAN>:8000/room/<sid>`.
