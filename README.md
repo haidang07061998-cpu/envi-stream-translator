@@ -393,3 +393,23 @@ Kiểm chứng đã chạy thật trong repo:
 **Điểm cần biết:** phiên notebook có giới hạn thời gian (Kaggle ~9–12h, Colab ngắn hơn) →
 phù hợp demo/bảo vệ, không phù hợp chạy 24/7. Và mọi phương án cloud đều làm **audio hoặc
 text rời khỏi máy** → không dùng cho chế độ họp mật thật (xem `docs/GPU_RENTAL.md` mục 6).
+
+### Kết quả đo thật trên Kaggle T4 (đã chạy qua tunnel công khai)
+
+| | CPU (máy 12 nhân) | **Kaggle T4** |
+|---|---|---|
+| Engine NMT | `hf-cpu` | **`hf-cuda`** |
+| ASR | `tiny.en` | **`large-v3-turbo`** (model xịn nhất) |
+| NMT mỗi câu | 1125–2857 ms | **172 ms** (min 148, max 246) |
+| Nhanh hơn | — | **6.5× – 16.6×** |
+| Chất lượng | BLEU 74.0 | **BLEU 74.0** (không đổi) |
+
+8/8 câu test dịch đúng, kể cả thuật ngữ khó (`latency` → `độ trễ`). Thời gian thực tế từ máy
+người dùng (gồm cả vòng qua Cloudflare → Kaggle) là **~400–500 ms/câu**.
+
+Tự đo lại bất cứ lúc nào:
+```powershell
+python scripts/bench_gpu_remote.py --url https://<ten>.trycloudflare.com
+```
+Script in ra: `server_ms` (GPU dịch thật), thời gian từ máy bạn (gồm mạng), BLEU/chrF, và bảng
+so sánh CPU vs GPU — đủ số liệu để đưa vào chương đánh giá của khóa luận.
