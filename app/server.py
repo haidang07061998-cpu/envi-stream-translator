@@ -547,6 +547,9 @@ async def ws_stream(ws: WebSocket):
     want_partial = qp.get("partial", "1") == "1"
     want_tts = qp.get("tts", "0") == "1"
     want_vi = (mode == "translate")
+    # Dich ca partial lam NMT bi chia se CPU -> cau final cham. Mac dinh CHI dich o
+    # cau final; bat PARTIAL_VI=1 neu muon thay ban dich chay theo tung cum.
+    want_partial_vi = want_vi and os.getenv("PARTIAL_VI", "0") == "1"
 
     session = None
     if sid:
@@ -619,7 +622,7 @@ async def ws_stream(ws: WebSocket):
             ev = {"kind": "partial", "en": en, "vi": None, "nmt_ms": 0.0,
                   "asr_ms": r["asr_ms"], "unstable": True, "audio_vi": None,
                   "e2e_ms": r["asr_ms"]}
-            if want_vi:
+            if want_partial_vi:
                 vi, nmt_ms = await _infer(NMT_LOCK, live.sim.nmt.translate, en)
                 ev["vi"], ev["nmt_ms"] = vi, nmt_ms
                 ev["e2e_ms"] = r["asr_ms"] + nmt_ms
@@ -638,6 +641,12 @@ async def ws_stream(ws: WebSocket):
                 st["interval"] = max(base, st["interval"] * 0.85)
 
     async def run_finalize():
+        """Chot cau: gui EN NGAY, roi gui ban dich VI khi xong.
+
+        Truoc day doi ca NMT moi gui -> nguoi dung cho them 1-3s. Gio:
+        - `final` (co EN + id) gui ngay sau ASR  -> man hinh 1 co chu tuc thi
+        - `{"kind":"vi", id, vi}` gui sau        -> man hinh 2 cap nhat tai cho
+        """
         nonlocal speaking, silence_since, seg_start
         speaking = False
         silence_since = None
@@ -650,30 +659,51 @@ async def ws_stream(ws: WebSocket):
             fin["t_start"] = seg_start
             fin["t_end"] = t_end
             seg_start = time.time()
-            t0 = time.time()
-            if want_vi:
-                vi, nmt_ms, info = await _infer(NMT_LOCK, live.translate, fin["en"], True)
-                fin["vi"], fin["nmt_ms"] = vi, nmt_ms
-                fin["scenario"] = info.get("scenario", fin.get("scenario"))
-                fin["numbers_missing"] = info.get("numbers_missing", [])
-            if tts is not None and fin.get("vi"):
-                audio, tts_ms = await _infer(TTS_LOCK, live.speak, fin["vi"])
-                fin["audio_vi"], fin["tts_ms"] = audio, tts_ms
-            fin["e2e_ms"] = float(fin.get("asr_ms", 0.0)) + (time.time() - t0) * 1000
-            STATS["asr_ms"].append(float(fin.get("asr_ms", 0.0)))
-            STATS["nmt_ms"].append(float(fin.get("nmt_ms", 0.0)))
-            STATS["e2e_ms"].append(float(fin.get("e2e_ms", 0.0)))
+            asr_ms = float(fin.get("asr_ms", 0.0))
+            STATS["asr_ms"].append(asr_ms)
+
+            # ---- 1) gui cau EN ngay ----
+            fin["vi"] = None
+            fin["nmt_ms"] = 0.0
+            fin["e2e_ms"] = asr_ms
             await send_safe(_encode_fin(fin))
+            cap = None
             if sid:
                 cap = rooms.add_caption(
-                    sid, fin["en"], fin.get("vi"), fin.get("speaker", "Speaker 1"),
+                    sid, fin["en"], None, fin.get("speaker", "Speaker 1"),
                     t_start=fin["t_start"], t_end=fin["t_end"],
-                    asr_ms=fin.get("asr_ms", 0), nmt_ms=fin.get("nmt_ms", 0),
-                    e2e_ms=fin.get("e2e_ms", 0), scenario=fin.get("scenario"))
+                    asr_ms=asr_ms, scenario=fin.get("scenario"))
                 if cap:
                     STATS["captions"] += 1
+
+            if not want_vi:
+                return
+
+            # ---- 2) dich (va TTS neu duoc yeu cau) roi cap nhat ----
+            t0 = time.time()
+            vi, nmt_ms, info = await _infer(NMT_LOCK, live.translate, fin["en"], True)
+            total = (time.time() - t0) * 1000
+            STATS["nmt_ms"].append(float(nmt_ms))
+            STATS["e2e_ms"].append(asr_ms + total)
+            upd = {"kind": "vi", "id": fin.get("id"), "vi": vi, "nmt_ms": nmt_ms,
+                   "e2e_ms": asr_ms + total,
+                   "scenario": info.get("scenario"),
+                   "numbers_missing": info.get("numbers_missing", [])}
+            if tts is not None and vi:
+                audio, tts_ms = await _infer(TTS_LOCK, live.speak, vi)
+                if audio:
+                    upd["audio_vi"] = base64.b64encode(audio).decode()
+                    upd["audio_mime"] = ("audio/wav" if audio[:4] == b"RIFF"
+                                         else "audio/mp3")
+                upd["tts_ms"] = tts_ms
+            await send_safe(upd)
+            if sid and cap:
+                rooms.update_caption(sid, cap["id"], vi=vi, nmt_ms=nmt_ms,
+                                     t_end=time.time())
         except Exception:
-            pass
+            STATS["errors"] += 1
+            import traceback
+            traceback.print_exc()
         finally:
             st["final_busy"] = False
 
@@ -705,8 +735,10 @@ async def ws_stream(ws: WebSocket):
             elif speaking and silence_since is None:
                 silence_since = now
 
-            # partial: chi spawn khi task truoc da xong + du nhip
-            if (want_partial and not st["partial_busy"]
+            # partial: chi spawn khi task truoc da xong + du nhip + KHONG dang chot cau.
+            # Trong luc chot cau (ASR+NMT ~2-4s) ma chay ASR partial song song thi hai
+            # tac vu tranh CPU cua nhau -> ca hai cham. Uu tien cau final.
+            if (want_partial and not st["partial_busy"] and not st["final_busy"]
                     and now - live.sim.last_emit >= st["interval"]):
                 live.sim.last_emit = now
                 st["partial_busy"] = True

@@ -32,6 +32,8 @@ main{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;min
 .meta{font-size:12px;color:#9fb3ff;margin-bottom:8px}
 .line{background:#0b1020;border-radius:10px;padding:8px 10px;margin-bottom:6px;line-height:1.5}
 .line .spk{color:#fcd34d;font-weight:700;font-size:12px;margin-right:4px}
+.line.vi{color:#86efac}
+.line.pending{color:#9fb3ff;font-style:italic;font-size:.9em}
 .partial{opacity:.65;font-style:italic}
 footer{padding:8px 14px;background:#0b1020;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:#9fb3ff}
 #qrbox{display:none;padding:10px 14px;background:#0b1020}
@@ -99,26 +101,59 @@ function exportLinks() {
 }
 exportLinks();
 
-function line(speaker, text) {
-  return `<div class="line"><span class="spk">[${esc(speaker || 'Speaker 1')}]</span>${esc(text)}</div>`;
+/* MAN HINH 1 = CHI phu de tieng Anh | MAN HINH 2 = CHI ban dich tieng Viet.
+   Giu mang `caps` roi ve lai: luon dung, va xu ly duoc viec server gui ban dich VI
+   den SAU (cung id -> cap nhat tai cho, khong sinh dong trung). */
+const caps = [];
+const capSeen = {};
+function enLine(c) {
+  return `<div class="line"><span class="spk">[${esc(c.speaker)}]</span> ${esc(c.en)}</div>`;
 }
-function addCaption(c) {
-  nShown++;
-  enFinal += line(c.speaker, c.en);
-  viFinal += line(c.speaker, c.vi || '...');
-  $('en').innerHTML = enFinal;
-  $('vi').innerHTML = viFinal;
+function viLine(c) {
+  const body = c.vi ? esc(c.vi) : '<span class="pending">dang dich...</span>';
+  return `<div class="line vi"><span class="spk">[${esc(c.speaker)}]</span> ${body}</div>`;
+}
+function render() {
+  $('en').innerHTML = caps.map(enLine).join('');
+  $('vi').innerHTML = caps.map(viLine).join('');
+  $('cnt').textContent = caps.length + ' cau';
   $('en').parentElement.scrollTop = 1e6;
   $('vi').parentElement.scrollTop = 1e6;
-  $('cnt').textContent = nShown + ' cau';
+}
+function addCaption(c) {
+  if (!c || (!c.en && !c.vi)) return;
+  const id = (c.id != null && c.id !== '') ? String(c.id) : ('t:' + (c.en || ''));
+  const ex = capSeen[id];
+  if (ex) {                                   // da co dong -> cap nhat (VI den sau)
+    if (c.vi) ex.vi = c.vi;
+    if (c.en) ex.en = c.en;
+    if (c.speaker) ex.speaker = c.speaker;
+    if (c.asr_ms || c.nmt_ms) {
+      $('m2').textContent = `ASR ${Math.round(c.asr_ms || 0)}ms + NMT ${Math.round(c.nmt_ms || 0)}ms`;
+    }
+    render();
+    return;
+  }
+  const rec = { id: id, speaker: c.speaker || 'Speaker 1',
+                en: c.en || '', vi: c.vi || '' };
+  capSeen[id] = rec;
+  caps.push(rec);
+  if (caps.length > 800) {                    // tran bo nho tren dien thoai
+    const drop = caps.shift();
+    if (drop) delete capSeen[drop.id];
+  }
   if (c.asr_ms || c.nmt_ms) {
     $('m2').textContent = `ASR ${Math.round(c.asr_ms || 0)}ms + NMT ${Math.round(c.nmt_ms || 0)}ms`;
   }
+  render();
 }
 function setPartial(en, vi) {
-  const keepEn = enFinal, keepVi = viFinal;
-  $('en').innerHTML = keepEn + (en ? `<div class="line partial">${esc(en)}</div>` : '');
-  if (mode === 'translate') $('vi').innerHTML = keepVi + (vi ? `<div class="line partial">${esc(vi)}</div>` : '');
+  const base = caps.map(enLine).join('');
+  $('en').innerHTML = base + (en ? `<div class="line partial">${esc(en)}</div>` : '');
+  if (mode === 'translate') {
+    const baseVi = caps.map(viLine).join('');
+    $('vi').innerHTML = baseVi + (vi ? `<div class="line partial">${esc(vi)}</div>` : '');
+  }
 }
 
 function connect() {

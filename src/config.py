@@ -115,7 +115,9 @@ class AppConfig:
     asr_beam: int = 1                 # streaming bat buoc = 1
     asr_language: str = "en"          # CHI tieng Anh
     asr_gate_rms: float = 0.004       # duoi nguong nay coi nhu im lang, khong goi ASR
-    asr_vad_filter: bool = True       # VAD noi bo cua faster-whisper (finalize)
+    # VAD noi bo cua faster-whisper. Do thuc te: TAT nhanh hon ~15% va ket qua giong
+    # (vi da co gate nang luong + loc hallucination rieng). Bat lai: ASR_VAD=1
+    asr_vad_filter: bool = False
 
     # ---------------- chunking / endpointing (DON VI GIAY) ----------------
     # Moi client (mobile / desktop / extension) deu dung chung cac so nay,
@@ -187,6 +189,7 @@ class AppConfig:
         self.max_buf_sec = _env_float("MAX_BUF", self.max_buf_sec)
         self.speak_rms = _env_float("SPEAK_RMS", self.speak_rms)
         self.asr_gate_rms = _env_float("ASR_GATE_RMS", self.asr_gate_rms)
+        self.asr_vad_filter = _env_bool("ASR_VAD", self.asr_vad_filter)
 
         # --- NMT beams ---
         if os.getenv("ACCURATE_BEAMS"):

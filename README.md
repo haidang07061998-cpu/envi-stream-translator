@@ -146,6 +146,9 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 | `OVERLAP_KEEP` | `0.5` | đuôi buffer giữ lại (chống mất chữ biên) |
 | `SPEAK_RMS` / `ASR_GATE_RMS` | `0.008` / `0.004` | ngưỡng "đang nói" / ngưỡng bỏ qua ASR |
 | `ACCURATE_BEAMS` | auto (GPU 4 / CPU 1) | beam cho câu final |
+| `ASR_VAD` | `0` | bật VAD nội bộ của Whisper (tắt nhanh hơn ~15%, kết quả như nhau) |
+| `NMT_INT8` | `0` | int8 dynamic quantization — nhanh hơn nhưng **cụt đuôi câu** (đo được) |
+| `PARTIAL_VI` | `0` | dịch cả partial (tốn CPU, làm câu final chậm đi) |
 | `ENABLE_CT2` | `0` (**TẮT**) | bật CTranslate2 int8 — chỉ bật sau khi tự kiểm tra chất lượng |
 | `DISABLE_CT2` | `0` | tắt cứng CT2 (thắng cả `ENABLE_CT2`) |
 | `CT2_EN2VI` / `CT2_QUANT` | `models/ct2-en2vi-v2-int8` / `int8_float32` | thư mục CT2 / kiểu lượng tử hoá khi convert |
@@ -237,6 +240,9 @@ scripts/             # tải model offline, convert CT2
 | 26 | CPU final beam = 2 | đo thực tế VinAI fp32 tốn **~5–17s/câu** trên CPU | mặc định CPU beam = 1 |
 | 27 | CT2 làm decoder **lặp vô nghĩa** — thử cả `int8_float32` và `float32` đều hỏng | nếu bật mặc định thì bản dịch thành rác mà không báo lỗi; lời hứa "nhanh 4-5x" trong code gốc là sai | CT2 **mặc định TẮT** + self-test khi khởi động + `looks_degenerate()` tự tắt sau 3 lần sinh rác |
 | 28 | CLI `ct2-transformers-converter` lỗi `unexpected keyword argument 'dtype'` | không convert được CT2 trên cặp phiên bản transformers/ctranslate2 hiện tại | script tự vá (`dtype` ↔ `torch_dtype`) rồi gọi Python API, kèm bước verify |
+| 29 | PWA đổ **cả EN + VI vào cả 2 màn hình** | trái yêu cầu "MH1 chỉ sub EN, MH2 chỉ bản dịch VI" | tách dòng theo từng màn hình + cập nhật VI tại chỗ khi bản dịch về sau |
+| 30 | Đợi đủ ASR **và** NMT mới gửi câu | chữ EN hiện sau ~14.5s dù ASR chỉ mất 1.7s | gửi `final` (EN) ngay, gửi `{"kind":"vi"}` sau |
+| 31 | Chạy ASR partial song song với lúc chốt câu | hai tác vụ tranh CPU → cả hai chậm | tạm dừng partial trong lúc chốt câu |
 
 ---
 
@@ -262,3 +268,54 @@ scripts/             # tải model offline, convert CT2
   clone; script này tải thẳng vào `models/` để chạy offline thật, không phụ thuộc cache HF.
 - Cần `pip install qrcode[pil]` để có ảnh QR (không có thì trả về link, không vỡ).
 - Extension Chrome chưa được test end-to-end trên Chrome thật (chỉ test tĩnh + VM giả lập).
+
+---
+
+## 9. Tối ưu tốc độ — số đo thực tế
+
+Mọi con số dưới đây đo trên chính máy này (12 CPU logic, không GPU), audio tiếng Anh thật
+qua `scripts/push_audio_ws.py`.
+
+### Đã áp dụng (an toàn, không mất chất lượng)
+
+| Tối ưu | Trước | Sau | Ghi chú |
+|---|---|---|---|
+| `torch.inference_mode()` thay `no_grad()` | 2706ms | **1125ms** | NMT nhanh 2.4x, miễn phí |
+| Gửi **EN ngay**, VI gửi sau (`kind:"vi"`) | chờ đủ ASR+NMT ~14.5s | **EN sau 1.7–2.2s** | MH1 có chữ gần như tức thì |
+| Tắt VAD nội bộ của Whisper | 1.29s | **1.09s** | kết quả nhận dạng giống hệt |
+| Không chạy ASR partial trong lúc chốt câu | — | — | tránh 2 tác vụ tranh CPU |
+| Không dịch partial (mặc định) | — | — | NMT rảnh cho câu final; bật `PARTIAL_VI=1` nếu muốn |
+| Warm-up NMT lúc tải model | — | — | câu thật đầu tiên không chịu ~1–2s khởi tạo |
+
+**Kết quả đo cuối** (1 câu ngắn 3s): EN sau **1.7s**, VI sau **+3.5s** (tổng 5.1s).
+Trước khi tối ưu: EN+VI chỉ hiện sau **~14.5s**.
+
+### Đã thử và **TỪ CHỐI** vì chất lượng (quan trọng)
+
+| Phương án | Tốc độ | Vì sao từ chối |
+|---|---|---|
+| CTranslate2 int8 | nhanh ~4x | sinh câu **lặp vô nghĩa** (`"Chúng Chúng Chúng chúng..."`); thử cả `int8_float32` và `float32`, cả hai đều hỏng |
+| int8 dynamic quantization | nhanh ~25–40% | **cụt đuôi câu**: đo được chỉ trùng **72%** từ với fp32 (`"...triển khai sản xuất."` → `"...triển khai"`). Mặc định TẮT, bật bằng `NMT_INT8=1` |
+| `Helsinki-NLP/opus-mt-en-vi` (77M, nhanh 2.4x) | 2206ms/câu | **dịch sai**: `"latency"` → `"khoan dung"` / `"khoan hồng"` (vô nghĩa); mất hẳn chữ "mobile" |
+
+⇒ **Giữ VinAI en2vi-v2 fp32** — chậm hơn nhưng đúng. Muốn nhanh hơn nữa thì cần **GPU**.
+
+### ⚠️ Cảnh báo quan trọng về máy
+
+Đo được: cùng một câu, NMT mất **1.1s khi máy rảnh** nhưng **3.5s khi có tiến trình khác
+cũng giữ model**. Nguyên nhân là áp lực RAM (mỗi tiến trình giữ ~1.8GB cho VinAI).
+**Chỉ chạy MỘT trong hai**: server (`uvicorn`) **hoặc** app desktop — đừng chạy cả hai cùng lúc,
+và nên đóng bớt trình duyệt/ứng dụng nặng khi dịch trực tiếp.
+
+---
+
+## 10. Giao diện 2 màn hình
+
+| Màn hình | Nội dung | Nguồn dữ liệu |
+|---|---|---|
+| **MÀN HÌNH 1** | **Chỉ phụ đề tiếng Anh** (EN) | `partial` (chữ chạy) + `final` (câu chốt) |
+| **MÀN HÌNH 2** | **Chỉ bản dịch tiếng Việt** (VI) | `{"kind":"vi", id, vi}` — đến sau `final` vài giây |
+
+Cả trang người nghe (`static/room/index.html`) và PWA (`static/mobile/index.html`) đều theo
+đúng quy tắc này; khi bản dịch chưa xong, MH2 hiện `dang dich...` rồi cập nhật **tại chỗ**
+(không sinh dòng trùng, không nhảy vị trí).

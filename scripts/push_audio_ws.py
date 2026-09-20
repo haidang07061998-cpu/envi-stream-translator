@@ -66,8 +66,9 @@ def main():
     finals = []
 
     def drain(short=0.02):
-        """Doc het message dang co (khong chan). Tra ve list final moi."""
+        """Doc het message dang co (khong chan). Tra ve (list final, so ban dich VI)."""
         got = []
+        vis = 0
         ws.settimeout(short)
         try:
             while True:
@@ -80,21 +81,25 @@ def main():
                 elif m.get("kind") == "final":
                     got.append(m)
                     print(f"  + FINAL EN: {m.get('en')!r}", flush=True)
+                    print(f"          (asr {m.get('asr_ms', 0):.0f}ms) "
+                          f"- dang cho ban dich VI...", flush=True)
+                elif m.get("kind") == "vi":
+                    vis += 1
                     print(f"          VI: {m.get('vi')!r}  "
-                          f"(asr {m.get('asr_ms', 0):.0f}ms + "
-                          f"nmt {m.get('nmt_ms', 0):.0f}ms = "
-                          f"{m.get('e2e_ms', 0):.0f}ms)", flush=True)
+                          f"(nmt {m.get('nmt_ms', 0):.0f}ms, "
+                          f"tong e2e {m.get('e2e_ms', 0):.0f}ms)", flush=True)
         except Exception:
             pass
         # QUAN TRONG: tra timeout ve gia tri dai truoc khi send tiep, neu khong
         # send_binary se bi timeout khi server dang ban chay ASR.
         ws.settimeout(60)
-        return got
+        return got, vis
 
     # Nhip gui: MAC DINH 1x toc do that (giong PWA/desktop). Client that luon gui
     # cham (~1x) va co gate im lang; gui nhanh hon nhieu se lam tran buffer WebSocket
     # phia server -> bi reset ket noi.
     pace = (CHUNK / 16000) / (4.0 if args.fast else 1.0)
+    n_vi = 0
     try:
         for i in range(0, len(audio), CHUNK):
             pcm = (audio[i:i + CHUNK] * 32767).astype("int16")
@@ -102,14 +107,17 @@ def main():
             sent += 1
             time.sleep(pace)
             if sent % 8 == 0:
-                finals += drain()
+                got, vis = drain()
+                finals += got
+                n_vi += vis
         print(f"[ws] da gui {sent} frame ({dur:.1f}s audio), bao server chot cau cuoi...")
         ws.send_binary(b"")
         deadline = time.time() + 180        # NMT tren CPU co the cham
         while time.time() < deadline:
-            got = drain(1.0)
+            got, vis = drain(1.0)
             finals += got
-            if got:
+            n_vi += vis
+            if finals and n_vi:
                 break
     finally:
         try:
@@ -117,7 +125,8 @@ def main():
         except Exception:
             pass
 
-    print(f"\n[tong] {len(finals)} cau final | thoi gian {time.time() - t_start:.1f}s")
+    print(f"\n[tong] {len(finals)} cau final | {n_vi} ban dich VI | "
+          f"thoi gian {time.time() - t_start:.1f}s")
     print(f"[mo phong] {args.host}/room/{args.sid}")
     if not finals:
         print("CANH BAO: khong co cau final nao. Kiem tra audio co tieng noi khong, "

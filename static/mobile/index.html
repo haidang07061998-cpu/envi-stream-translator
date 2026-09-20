@@ -94,6 +94,8 @@ main{flex:1 1 auto;display:grid;grid-template-columns:1fr;gap:8px;padding:8px;mi
 .live .line{margin:0 0 8px;white-space:pre-wrap;word-break:break-word}
 .live .spk{color:var(--warn);font-weight:800}
 .live .partial{opacity:.55;font-style:italic}
+.live .line.vi{color:#86efac}
+.live .pending{color:#9fb3ff;font-style:italic;font-size:.85em}
 .live .partial:empty{display:none}
 .live .empty{color:var(--dim);font-size:14px}
 .live audio{width:100%;margin-top:6px}
@@ -413,22 +415,25 @@ function addCaption(c) {
   S.seen[k] = true;
 
   ensureContainers();
-  var line = document.createElement("div");
-  line.className = "line";
   var who = spkLabel(c.speaker);
+  var cid = (c.id != null && c.id !== "") ? String(c.id) : "";
+
+  // MAN HINH 1 = CHI phu de tieng Anh
   if (en) {
     var l1 = document.createElement("div");
+    l1.className = "line";
+    if (cid) l1.setAttribute("data-cap", cid);
     l1.innerHTML = '<span class="spk">' + esc(who) + "</span> " + esc(en);
-    line.appendChild(l1);
+    els.liveEn.appendChild(l1);
   }
-  if (vi) {
-    var l2 = document.createElement("div");
-    l2.style.color = "#86efac";
-    l2.innerHTML = '<span class="spk">' + esc(who) + "</span> " + esc(vi);
-    line.appendChild(l2);
-  }
-  els.liveEn.appendChild(line.cloneNode(true));
-  els.liveVi.appendChild(line);
+  // MAN HINH 2 = CHI ban dich tieng Viet
+  var l2 = document.createElement("div");
+  l2.className = "line vi";
+  if (cid) l2.setAttribute("data-cap", cid);
+  l2.innerHTML = '<span class="spk">' + esc(who) + "</span> " +
+    (vi ? esc(vi) : '<span class="pending">dang dich...</span>');
+  els.liveVi.appendChild(l2);
+
   if (S.partialEnEl) els.liveEn.appendChild(S.partialEnEl);
   if (S.partialViEl) els.liveVi.appendChild(S.partialViEl);
 
@@ -442,6 +447,21 @@ function addCaption(c) {
   if (c.scenario) S.scenario = c.scenario;
   updateAuto();
   els.liveEn.scrollTop = els.liveEn.scrollHeight;
+  els.liveVi.scrollTop = els.liveVi.scrollHeight;
+  return true;
+}
+/* Cap nhat ban dich VI den SAU: server gui final EN truoc (nhanh), VI gui sau.
+   Neu khong co ham nay thi dong VI se ket o "dang dich...". */
+function patchVi(id, vi) {
+  if (id == null || id === "" || !vi) return false;
+  var cid = String(id);
+  for (var i = 0; i < S.captions.length; i++) {
+    if (String(S.captions[i].id) === cid) S.captions[i].vi = vi;
+  }
+  var el = els.liveVi.querySelector('[data-cap="' + cid + '"]');
+  if (!el) return false;
+  var who = el.querySelector(".spk");
+  el.innerHTML = (who ? who.outerHTML + " " : "") + esc(vi);
   els.liveVi.scrollTop = els.liveVi.scrollHeight;
   return true;
 }
@@ -826,6 +846,7 @@ function handleServerMsg(m) {
     setPartial(m.en, S.mode === "transcribe" ? null : m.vi);
     return;
   }
+  if (m.kind === "vi") { patchVi(m.id, m.vi); return; }
   if (m.kind === "final" || m.en) {
     clearPartial();
     addCaption(m);

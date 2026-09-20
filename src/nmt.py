@@ -66,6 +66,10 @@ def looks_degenerate(text: str) -> bool:
 
 CT2_SELFTEST_SENTENCE = "We need to check the API latency before we deploy."
 
+# Cau dung cho self-test int8: chon cau DAI de phat hien bi cat cut (truncate)
+INT8_SELFTEST = ("You should check the API latency before we deploy to production, "
+                 "otherwise the mobile clients will complain.")
+
 
 def ct2_enabled() -> bool:
     """CT2 co duoc phep dung khong. MAC DINH TAT (xem ghi chu trong NMTTranslator).
@@ -74,6 +78,15 @@ def ct2_enabled() -> bool:
     """
     return (os.getenv("ENABLE_CT2", "0") == "1"
             and os.getenv("DISABLE_CT2", "0") != "1")
+
+
+def word_overlap(a: str, b: str) -> float:
+    """Ty le tu trung nhau (Jaccard) - dung de so ban int8 voi ban fp32."""
+    wa = {w.lower().strip(".,!?…:;") for w in (a or "").split() if w}
+    wb = {w.lower().strip(".,!?…:;") for w in (b or "").split() if w}
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / len(wa | wb)
 
 
 class NMTTranslator:
@@ -196,6 +209,16 @@ class NMTTranslator:
         self.cache_hits = 0
         self.cache_misses = 0
         self.ct2_degenerate = 0
+        self.model_q = None
+        self.int8_note = None
+        self._maybe_quantize()
+        # Warm-up: nap kernel / lazy init ngay luc tai model, de cau that dau tien
+        # khong phai chiu ~1-2s khoi tao.
+        try:
+            if self.model is not None or self.model_q is not None:
+                self.translate("Hello, welcome to the meeting.", accurate=False)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     def _ct2_selftest(self):
@@ -228,6 +251,8 @@ class NMTTranslator:
     def engine(self) -> str:
         if self.ct2 is not None:
             return "ct2-int8"
+        if self.model_q is not None:
+            return "hf-cpu-int8"
         return "hf-" + self.device
 
     def set_glossary(self, terms: dict):
@@ -257,23 +282,65 @@ class NMTTranslator:
             return s
 
     # ------------------------------------------------------------------
-    def _hf_vinai(self, t: str, beams: int):
+    def _hf_vinai(self, t: str, beams: int, model=None):
         import torch
+        m = model if model is not None else (self.model_q or self.model)
         ids = self.tok(t, return_tensors="pt", truncation=True,
                        max_length=128).input_ids.to(self.device)
         # early_stopping chi co y nghia khi beam > 1 (neu khong transformers canh bao)
         extra = {"early_stopping": True} if beams > 1 else {}
-        with torch.no_grad():
+        # inference_mode nhanh hon no_grad (do thuc te: 2706ms -> 1125ms)
+        with torch.inference_mode():
             try:
-                out = self.model.generate(
+                out = m.generate(
                     ids, decoder_start_token_id=self.vi_id,
                     num_beams=beams, max_new_tokens=80,
                     no_repeat_ngram_size=3, length_penalty=1.0, **extra)
             except TypeError:
-                out = self.model.generate(
+                out = m.generate(
                     ids, decoder_start_token_id=self.vi_id,
                     num_beams=beams, max_length=self.max_len, **extra)
         return self.tok.batch_decode(out, skip_special_tokens=True)[0].strip()
+
+    # ------------------------------------------------------------------
+    def _maybe_quantize(self):
+        """int8 dynamic quantization cho cac lop Linear (chi tren CPU).
+
+        Do thuc te tren may nay: fp32 ~2.1s/cau -> int8 ~0.86s/cau (nhanh hon ~25-40%
+        khi da bat inference_mode) NHUNG ban int8 bi CUT DUOI cau (do duoc chi trung
+        72% tu voi fp32: '...trien khai san xuat.' -> '...trien khai'). Vi vay MAC DINH
+        TAT. Bat: NMT_INT8=1 (co self-test + guard, tu choi neu lech qua 40%).
+        """
+        if self.model is None or self.device != "cpu":
+            return
+        if os.getenv("NMT_INT8", "0") != "1":
+            self.int8_note = "int8 TAT (mac dinh). Bat bang NMT_INT8=1 neu chap nhan danh doi toc do/chat luong."
+            return
+        try:
+            import torch
+            t0 = time.time()
+            q = torch.quantization.quantize_dynamic(
+                self.model, {torch.nn.Linear}, dtype=torch.qint8)
+            q.eval()
+            ref = self._hf_vinai(INT8_SELFTEST, 1, model=self.model)
+            got = self._hf_vinai(INT8_SELFTEST, 1, model=q)
+            ov = word_overlap(ref, got)
+            bad = (not got) or looks_degenerate(got) or ov < 0.6
+            if bad:
+                self.model_q = None
+                self.int8_note = (f"int8 bi tu choi (trung {ov:.0%}, "
+                                  f"lap={looks_degenerate(got)}) -> dung fp32")
+                print(f"[NMT] {self.int8_note}")
+                del q
+                return
+            self.model_q = q
+            self.model = None          # giai phong ban fp32 (~1.8GB) sau khi int8 dat
+            self.int8_note = f"int8 OK (trung {ov:.0%} voi fp32, {time.time()-t0:.0f}s)"
+            print(f"[NMT] {self.int8_note} | fp32: {ref!r} | int8: {got!r}")
+        except Exception as e:
+            self.model_q = None
+            self.int8_note = f"int8 loi ({type(e).__name__}: {e}) -> dung fp32"
+            print(f"[NMT] {self.int8_note}")
 
     def _ct2_vinai(self, t: str, beams: int):
         """CTranslate2: token hoa bang tokenizer HF -> token STRING cho CT2."""
@@ -382,7 +449,7 @@ class NMTTranslator:
         return {"engine": self.engine, "device": self.device,
                 "live_beams": self.num_beams, "final_beams": self.accurate_beams,
                 "cache": len(self._cache), "cache_hits": self.cache_hits,
-                "ct2_error": self.ct2_error}
+                "ct2_error": self.ct2_error, "int8": self.int8_note}
 
 
 def finetune_nmt_lora(base_id="facebook/nllb-200-distilled-600M",
