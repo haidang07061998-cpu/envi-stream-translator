@@ -80,6 +80,78 @@ def ct2_enabled() -> bool:
             and os.getenv("DISABLE_CT2", "0") != "1")
 
 
+def remote_nmt_url() -> str:
+    """Dia chi may GPU thue (neu co). Rong = dich ngay tai may."""
+    return (os.getenv("NMT_REMOTE_URL", "") or "").strip().rstrip("/")
+
+
+class RemoteNMT:
+    """Dich o MAY KHAC (GPU thue mien phi) qua HTTP.
+
+    Dung khi may yeu: ASR van chay tai may (nhe, ~75MB), chi gui TEXT len cloud de dich.
+    - KHONG gui audio -> audio khong roi khoi may (giu duoc phan lon tinh rieng tu)
+    - May khong can giu model NMT 1.8GB -> nhe RAM, khong tranh CPU
+    - Giao dien giong NMTTranslator: translate(text, accurate) -> (vi, ms)
+    """
+
+    def __init__(self, url, timeout=20.0):
+        self.url = url.rstrip("/")
+        self.timeout = float(timeout)
+        self.calls = 0
+        self.errors = 0
+        self.last_error = None
+
+    @property
+    def engine(self) -> str:
+        return "remote:" + self.url
+
+    def set_glossary(self, terms):
+        return None                      # thuat ngu da duoc ep o phia may chu
+
+    def translate(self, texts, accurate: bool = False):
+        import requests
+        single = isinstance(texts, str)
+        items = [texts] if single else list(texts)
+        out, total = [], 0.0
+        for t in items:
+            if not (t or "").strip():
+                out.append("")
+                continue
+            try:
+                r = requests.post(f"{self.url}/translate",
+                                  json={"text": t, "accurate": bool(accurate)},
+                                  timeout=self.timeout)
+                r.raise_for_status()
+                j = r.json()
+                out.append(j.get("vi", "") or "")
+                total += float(j.get("ms", 0.0) or 0.0)
+                self.calls += 1
+            except Exception as e:
+                self.errors += 1
+                self.last_error = f"{type(e).__name__}: {e}"
+                out.append("")            # khong lam vo luong: tra rong
+        return (out[0], total) if single else (out, total)
+
+    def stats(self) -> dict:
+        return {"engine": self.engine, "calls": self.calls, "errors": self.errors,
+                "last_error": self.last_error, "remote": True}
+
+
+def build_nmt(model_id="vinai/vinai-translate-en2vi-v2", src="en_XX", tgt="vi_VN",
+              **kwargs):
+    """Tao bo dich: dung may GPU thue neu co NMT_REMOTE_URL, nguoc lai chay tai may.
+
+    Day la diem vao duy nhat nen dung (server, desktop) de bat/tat che do GPU tu xa
+    chi bang 1 bien moi truong.
+    """
+    url = remote_nmt_url()
+    if url:
+        print(f"[NMT] CHE DO GPU TU XA: chi gui TEXT len {url} "
+              f"(audio khong roi khoi may, khong can model 1.8GB)")
+        return RemoteNMT(url)
+    return NMTTranslator(model_id, src, tgt, **kwargs)
+
+
 def word_overlap(a: str, b: str) -> float:
     """Ty le tu trung nhau (Jaccard) - dung de so ban int8 voi ban fp32."""
     wa = {w.lower().strip(".,!?…:;") for w in (a or "").split() if w}
@@ -285,6 +357,28 @@ class NMTTranslator:
             return s
 
     # ------------------------------------------------------------------
+    def _hf_vinai_batch(self, texts, beams: int):
+        """Dich NHIEU cau trong 1 lan generate.
+
+        Dich tung cau mot thi CPU/GPU bi bo trong giua cac buoc; gop lai thanh batch
+        tan dung duoc phep nhan ma tran -> nhanh hon cho cau dai nhieu manh.
+        """
+        import torch
+        m = self.model_q or self.model
+        enc = self.tok(list(texts), return_tensors="pt", truncation=True,
+                       max_length=128, padding=True)
+        enc = {k: v.to(self.device) for k, v in enc.items()}
+        extra = {"early_stopping": True} if beams > 1 else {}
+        with torch.inference_mode():
+            try:
+                out = m.generate(**enc, decoder_start_token_id=self.vi_id,
+                                 num_beams=beams, max_new_tokens=80,
+                                 no_repeat_ngram_size=3, length_penalty=1.0, **extra)
+            except TypeError:
+                out = m.generate(**enc, decoder_start_token_id=self.vi_id,
+                                 num_beams=beams, max_length=self.max_len, **extra)
+        return [s.strip() for s in self.tok.batch_decode(out, skip_special_tokens=True)]
+
     def _hf_vinai(self, t: str, beams: int, model=None):
         import torch
         m = model if model is not None else (self.model_q or self.model)
@@ -372,8 +466,17 @@ class NMTTranslator:
         if not t:
             return ""
         if len(t.split()) > 40 or len(t) > 300:
-            parts = split_sentences_en(t)
-            outs = [self._translate_one(p, beams) for p in parts if p.strip()]
+            parts = [p for p in split_sentences_en(t) if p.strip()]
+            # Cau dai nhieu manh: gop thanh 1 batch -> nhanh hon dich tung manh
+            if len(parts) > 1 and self.is_vinai and self.ct2 is None:
+                try:
+                    outs = self._hf_vinai_batch(parts, beams)
+                    joined = " ".join(o for o in outs if o).strip()
+                    if joined:
+                        return self._post(joined)
+                except Exception:
+                    pass
+            outs = [self._translate_one(p, beams) for p in parts]
             return " ".join(o for o in outs if o).strip()
 
         if self.ct2 is not None and self.is_vinai:

@@ -92,7 +92,7 @@ class Pipeline:
     def __init__(self):
         import torch
         from src.asr import FasterWhisperASR
-        from src.nmt import NMTTranslator
+        from src.nmt import build_nmt
 
         self.cfg = DEFAULT
         self.use_cuda = torch.cuda.is_available()
@@ -101,7 +101,9 @@ class Pipeline:
             asr_model, DEFAULT.asr_device, DEFAULT.resolve_compute(self.use_cuda),
             DEFAULT.asr_beam, DEFAULT.asr_language,
             vad_filter=DEFAULT.asr_vad_filter, gate_rms=DEFAULT.asr_gate_rms)
-        self.nmt = NMTTranslator(
+        # build_nmt: neu co NMT_REMOTE_URL thi chi gui TEXT len may GPU thue,
+        # khong tai model 1.8GB tai may nay (may yeu van chay duoc).
+        self.nmt = build_nmt(
             DEFAULT.nmt_model, DEFAULT.nmt_src, DEFAULT.nmt_tgt,
             num_beams=DEFAULT.nmt_live_beams, max_len=DEFAULT.nmt_max_len,
             accurate_beams=DEFAULT.resolve_final_beams(self.use_cuda),
@@ -261,6 +263,8 @@ def health():
         "glossary_terms": DEFAULT.glossary_max_terms,
         "rooms": len(rooms.SESSIONS),
         "uptime_sec": round(time.time() - APP_START, 1),
+        "nmt": (p.nmt.stats() if p else None),
+        "nmt_remote": bool(os.getenv("NMT_REMOTE_URL", "").strip()),
     }
 
 
@@ -529,6 +533,28 @@ async def summarize(body: dict):
     from src.summarizer import summarize as _sum
     text = (body or {}).get("vi_text", "") or (body or {}).get("text", "")
     return await run_in_threadpool(_sum, text)
+
+
+@app.post("/translate")
+async def translate_text(body: dict):
+    """Dich 1 doan TEXT EN -> VI. Day la endpoint de MAY KHAC (may yeu) goi vao.
+
+    Che do GPU tu xa: may yeu chay ASR + TTS, chi gui TEXT len day de dich.
+    - Khong gui audio -> audio khong roi khoi may nguoi dung
+    - May yeu khong can giu model NMT 1.8GB
+
+    Body: {"text": "We need to check the budget.", "accurate": false}
+    Tra ve: {"vi": "...", "ms": 123.4, "engine": "hf-cuda"}
+    """
+    pipe = await ensure_pipe()
+    if pipe is None:
+        raise HTTPException(status_code=503, detail=f"Model chua tai xong: {_pipe_error}")
+    text = ((body or {}).get("text") or "").strip()
+    accurate = bool((body or {}).get("accurate", False))
+    if not text:
+        return {"vi": "", "ms": 0.0, "engine": getattr(pipe.nmt, "engine", "?")}
+    vi, ms = await _infer(NMT_LOCK, pipe.nmt.translate, text, accurate)
+    return {"vi": vi, "ms": float(ms), "engine": getattr(pipe.nmt, "engine", "?")}
 
 
 # ====================================================================== websockets

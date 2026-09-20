@@ -337,7 +337,6 @@ và nên đóng bớt trình duyệt/ứng dụng nặng khi dịch trực tiế
 ---
 
 ## 10. Giao diện 2 màn hình
-
 | Màn hình | Nội dung | Nguồn dữ liệu |
 |---|---|---|
 | **MÀN HÌNH 1** | **Chỉ phụ đề tiếng Anh** (EN) | `partial` (chữ chạy) + `final` (câu chốt) |
@@ -346,3 +345,51 @@ và nên đóng bớt trình duyệt/ứng dụng nặng khi dịch trực tiế
 Cả trang người nghe (`static/room/index.html`) và PWA (`static/mobile/index.html`) đều theo
 đúng quy tắc này; khi bản dịch chưa xong, MH2 hiện `dang dich...` rồi cập nhật **tại chỗ**
 (không sinh dòng trùng, không nhảy vị trí).
+
+---
+
+## 11. Dùng GPU miễn phí mà **máy bạn vẫn trình diễn được**
+
+Trả lời ngắn: **được, và máy bạn còn nhẹ hơn hiện tại.** Model nặng (NMT 1.8GB) chuyển lên
+cloud; máy bạn chỉ còn trình duyệt (hoặc ASR nhẹ). Chi tiết thuê GPU ở `docs/GPU_RENTAL.md`.
+
+### 3 kiến trúc — cái gì chạy ở đâu
+
+| | Máy bạn chạy | Cloud GPU chạy | RAM máy bạn | Độ trễ/câu | Riêng tư |
+|---|---|---|---|---|---|
+| **1. Toàn bộ ở cloud** | chỉ trình duyệt | ASR + NMT + TTS | ~0 (chỉ Chrome) | ~0.5–0.8s | audio **rời máy** |
+| **2. HYBRID (khuyến nghị)** | ASR + TTS + giao diện | **chỉ NMT** | **~300MB** (đo thật: 302MB vs 2202MB) | ~1.1s + 0.2s | **audio KHÔNG rời máy**, chỉ text |
+| **3. Toàn bộ ở máy** (hiện tại) | tất cả | không | ~2.2GB | 5–9s | không rời máy |
+
+### Cách bật kiến trúc 2 (đã code sẵn, chỉ 1 biến môi trường)
+
+```powershell
+# 1) Lấy URL GPU miễn phí: chạy scripts/colab_kaggle_server.py trong Colab/Kaggle
+#    (hoặc `modal deploy modal_app.py`) -> được URL https://...
+# 2) Trên máy bạn: chỉ gửi TEXT lên đó để dịch
+set NMT_REMOTE_URL=https://<url-gpu>
+python desktop_app_v2.py        # hoặc run_desktop_v2.bat
+```
+Khi đó máy bạn **không tải model NMT nữa** (nhẹ 1.9GB RAM, không tốn CPU để dịch), nhưng
+vẫn giữ được: mic, phụ đề EN, giao diện 2 màn hình, xuất file, tóm tắt.
+
+Kiểm chứng đã chạy thật trong repo:
+- `tests/test_remote_nmt.py` — 7 test cho giao thức gọi GPU từ xa (kể cả khi máy GPU chết
+  thì mic vẫn chạy, chỉ trả chuỗi rỗng chứ không vỡ luồng)
+- Đo live 2 tiến trình: máy "yếu" **302MB** gọi máy "GPU" **2202MB** → trả về đúng
+  `"Chúng ta cần kiểm tra ngân sách trước thứ Sáu."`
+- `POST /translate` — endpoint để máy khác gọi vào (chỉ nhận text, không nhận audio)
+
+### 2 file dùng GPU miễn phí (viết sẵn)
+
+| File | Nền tảng | Miễn phí | Có URL public? |
+|---|---|---|---|
+| `scripts/colab_kaggle_server.py` | Colab / Kaggle | Kaggle 30h/tuần, Colab phiên ngắn | ✅ qua tunnel cloudflared (script tự mở và in URL) |
+| `modal_app.py` | Modal | $30/tháng + grant sinh viên tới $10k | ✅ URL sẵn, ổn định hơn |
+
+**Điểm hay:** URL cloud là `https://` nên **mic chạy được cả trên điện thoại** — điều mà
+`http://<ip-LAN>` không làm được.
+
+**Điểm cần biết:** phiên notebook có giới hạn thời gian (Kaggle ~9–12h, Colab ngắn hơn) →
+phù hợp demo/bảo vệ, không phù hợp chạy 24/7. Và mọi phương án cloud đều làm **audio hoặc
+text rời khỏi máy** → không dùng cho chế độ họp mật thật (xem `docs/GPU_RENTAL.md` mục 6).

@@ -218,12 +218,14 @@ def load_models_bg(status_cb):
                                beam_size=DEFAULT.asr_beam, language=DEFAULT.asr_language,
                                vad_filter=DEFAULT.asr_vad_filter,
                                gate_rms=DEFAULT.asr_gate_rms)
-        # --- NMT: VinAI + CT2 int8 neu co, beam live/final tu config ---
-        nmt = NMTTranslator(DEFAULT.nmt_model, DEFAULT.nmt_src, DEFAULT.nmt_tgt,
-                            num_beams=DEFAULT.nmt_live_beams,
-                            max_len=DEFAULT.nmt_max_len,
-                            accurate_beams=final_beams,
-                            ct2_path=DEFAULT.ct2_dir)
+        # --- NMT: uu tien MAY GPU THUE neu co NMT_REMOTE_URL (chi gui TEXT),
+        #     nguoc lai chay VinAI tai may. Xem src/nmt.py:build_nmt() ---
+        from src.nmt import build_nmt
+        nmt = build_nmt(DEFAULT.nmt_model, DEFAULT.nmt_src, DEFAULT.nmt_tgt,
+                        num_beams=DEFAULT.nmt_live_beams,
+                        max_len=DEFAULT.nmt_max_len,
+                        accurate_beams=final_beams,
+                        ct2_path=DEFAULT.ct2_dir)
         nst = nmt.stats()
         engine = nst.get("engine") or getattr(nmt, "engine", "?")
         live = LiveSession(asr, nmt, None, sr=SR, mode=DEFAULT.mode,

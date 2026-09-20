@@ -152,6 +152,40 @@ class TestServerHttp(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("summary", r.json())
 
+    def test_health_co_thong_tin_nmt(self):
+        j = client.get("/health").json()
+        self.assertIn("nmt", j)
+        self.assertIn("nmt_remote", j)
+
+    def test_translate_endpoint_cho_may_khac_goi_vao(self):
+        """Che do GPU tu xa: may yeu gui TEXT len day de dich (khong gui audio).
+
+        Bom mot pipeline gia de khong phai tai model that.
+        """
+        import app.server as srv
+
+        class FakeNMT:
+            engine = "fake-gpu"
+
+            def translate(self, text, accurate=False):
+                return ("VI:" + text, 7.5)
+
+        old = srv._pipe
+        srv._pipe = type("P", (), {"nmt": FakeNMT()})()
+        try:
+            r = client.post("/translate", json={"text": "Hello world",
+                                                "accurate": False})
+            self.assertEqual(r.status_code, 200)
+            j = r.json()
+            self.assertEqual(j["vi"], "VI:Hello world")
+            self.assertAlmostEqual(j["ms"], 7.5)
+            self.assertEqual(j["engine"], "fake-gpu")
+            # text rong -> khong goi model
+            r2 = client.post("/translate", json={"text": "   "})
+            self.assertEqual(r2.json()["vi"], "")
+        finally:
+            srv._pipe = old
+
     # LUU Y: KHONG test /translate_file hay /doctranslate o day.
     # Hai endpoint nay goi ensure_pipe() -> tai that Whisper + VinAI (1-2 phut, can mang).
     # Nhanh 503 chi xay ra khi tai model THAT BAI, khong the gia lap ma khong tai.
