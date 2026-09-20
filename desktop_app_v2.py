@@ -488,9 +488,12 @@ class App:
                                 bg=CARD, fg=("#86efac" if _gpu_url else "#9fb3ff"),
                                 font=("Segoe UI", 9))
         self.gpu_lbl.pack(side="left", padx=6)
-        tk.Label(ctx, text=("Dán URL https://...trycloudflare.com từ Kaggle/Colab rồi bấm "
-                            "KIỂM TRA + LƯU.\nĐể trống = dịch ngay tại máy (CPU). "
-                            "Đổi phiên Kaggle thì dán URL mới."),
+        tk.Label(ctx, text=("Phiên Kaggle MỚI thì phải làm 3 việc:  "
+                            "(1) mở Kaggle → Run cell 2   →   (2) copy URL mới   →   "
+                            "(3) dán vào ô trên, bấm KIỂM TRA + LƯU, rồi khởi động lại app.\n"
+                            "Nhanh hơn: copy URL rồi chạy  python scripts/set_gpu_url.py  "
+                            "(tự tìm URL trong clipboard, tự lưu, tự kiểm tra GPU).\n"
+                            "Để trống ô trên = dịch ngay tại máy (CPU, chậm hơn nhưng vẫn chạy)."),
                  bg=CARD, fg="#64748b", font=("Segoe UI", 8), justify="left").pack(
                      anchor="w", padx=10, pady=(0, 2))
         # Noi ro che do dang chay - de nguoi dung biet du lieu co roi khoi may khong
@@ -1013,7 +1016,10 @@ class App:
 
             def _done():
                 if not info.get("ok"):
-                    self.gpu_lbl.config(text="✘ GPU không kết nối được", fg="#fca5a5")
+                    self.gpu_lbl.config(
+                        text="✘ GPU không kết nối được — cần Run cell trên Kaggle "
+                             "rồi cập nhật URL mới",
+                        fg="#fca5a5")
                     return
                 dev = info.get("device")
                 if dev == "cuda":
