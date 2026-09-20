@@ -1,39 +1,66 @@
 """Speaker diarization nhe cho EN -> VI.
 
-Van de cua ban cu: `diarize_auto` fit lai KMeans tren TOAN BO tap dac trung moi khi
-co cau moi -> chi so cluster doi giua cac lan goi -> "Speaker 1" va "Speaker 2"
-hoan vai cho nhau giua cac cau. Ngoai ra `label_speakers` tao dac trung bang
-`np.random.randn` (du lieu GIA) -> nhan speaker ngau nhien.
+Van de cua ban cu:
+1. `diarize_auto` fit lai KMeans tren TOAN BO tap dac trung moi khi co cau moi -> chi so
+   cluster doi giua cac lan goi -> "Speaker 1" va "Speaker 2" hoan vai cho nhau.
+2. `label_speakers` tao dac trung bang `np.random.randn` (du lieu GIA) -> nhan ngau nhien.
+3. `librosa.feature.mfcc` **TREO >180 giay** tren may nay (numba JIT) -> `LiveSession.
+   finalize_text()` goi `_mfcc_mean()` de gan nhan nguoi noi nen KHONG BAO GIO tra ve
+   => khong co cau final nao, khong co caption nao. Xem `_mfcc_mean` ben duoi: da thay
+   bang dac trung log-mel THUAN NUMPY (chay ~ms).
 
-Gio dung `SpeakerTracker`: so sanh dac trung voi cac centroid da luu, chi tao nhan
-moi khi thuc su khac -> nhan ON DINH theo thoi gian. Nguong hieu chinh bang
-bien moi truong SPEAKER_THRESHOLD (mac dinh 0.60, correlation tren MFCC da tru trung binh).
+Nguong hieu chinh bang bien moi truong SPEAKER_THRESHOLD (mac dinh 0.60).
 """
 import os
 import numpy as np
 
 
+def _mel_edges(n_mels=13, sr=16000, fmin=50.0, fmax=7600.0):
+    """Chi so bin FFT cho cac dai mel (thuan numpy)."""
+    def hz2mel(f):
+        return 2595.0 * np.log10(1.0 + f / 700.0)
+
+    def mel2hz(m):
+        return 700.0 * (10.0 ** (m / 2595.0) - 1.0)
+
+    mels = np.linspace(hz2mel(fmin), hz2mel(fmax), n_mels + 2)
+    hz = mel2hz(mels)
+    n_bins = 1 + 256                       # rfft voi n_fft=512
+    return np.clip(np.floor((n_bins - 1) * hz / (sr / 2.0)).astype(int), 0, n_bins - 1)
+
+
 def _mfcc_mean(audio, sr=16000, n_mfcc=13):
-    try:
-        import librosa
-        m = librosa.feature.mfcc(y=np.asarray(audio, dtype=np.float32), sr=sr,
-                                 n_mfcc=n_mfcc)
-        return m.mean(axis=1)
-    except Exception:
-        # fallback: nang luong + zero-crossing + chia khung thoi gian
-        a = np.asarray(audio, dtype=np.float32)
-        v = np.zeros(n_mfcc, dtype=np.float32)
-        if len(a) == 0:
-            return v
-        z = float(np.mean(np.abs(np.diff(np.sign(a))))) if len(a) > 1 else 0.0
-        v[0] = float(np.sqrt(np.mean(a * a) + 1e-10))
-        v[1] = z
-        n = max(1, n_mfcc - 2)
-        step = max(1, len(a) // n)
-        for i in range(n):
-            seg = a[i * step:(i + 1) * step]
-            v[2 + i] = float(np.sqrt(np.mean(seg * seg) + 1e-10)) if len(seg) else 0.0
-        return v
+    """Dac trung giong noi 13 chieu: log-nang-luong theo dai mel, trung binh theo khung.
+
+    THUAN NUMPY - khong dung librosa/numba. Ly do: `librosa.feature.mfcc` treo >180s
+    tren may nay, lam moi cau final bi ket (khong bao gio chot duoc cau).
+    Thoi gian chay: ~1-3ms cho 2 giay audio.
+    """
+    a = np.asarray(audio, dtype=np.float32).ravel()
+    if a.size == 0:
+        return np.zeros(n_mfcc, dtype=np.float32)
+    n_fft, hop = 512, 160
+    if a.size < n_fft:
+        a = np.pad(a, (0, n_fft - a.size))
+    frames = 1 + (a.size - n_fft) // hop
+    if frames <= 0:
+        return np.zeros(n_mfcc, dtype=np.float32)
+    # gioi han so khung de khong ton RAM voi doan dai
+    if frames > 2000:
+        hop = max(hop, (a.size - n_fft) // 2000)
+        frames = 1 + (a.size - n_fft) // hop
+    idx = np.arange(n_fft)[None, :] + hop * np.arange(frames)[:, None]
+    window = np.hanning(n_fft).astype(np.float32)
+    spec = np.fft.rfft(a[idx] * window, axis=1)
+    power = (spec.real ** 2 + spec.imag ** 2).astype(np.float32)
+
+    edges = _mel_edges(n_mfcc, sr)
+    bands = np.empty((frames, n_mfcc), dtype=np.float32)
+    for i in range(n_mfcc):
+        lo = edges[i]
+        hi = max(lo + 1, edges[i + 1])
+        bands[:, i] = power[:, lo:hi].mean(axis=1)
+    return np.log(bands + 1e-8).mean(axis=0).astype(np.float32)
 
 
 def _shape(v):

@@ -165,6 +165,35 @@ class SimultaneousProcessor:
             ev["e2e_ms"] = r["asr_ms"] + nmt_ms
         return ev
 
+    def add_audio(self, chunk: np.ndarray):
+        """Chi append buffer, KHONG goi model — dung cho vong lap nhan audio cua server.
+
+        Server phai doc socket that nhanh; neu goi ASR ngay trong vong lap thi
+        uvicorn/websockets se ngat ket noi khi hang doi phia server phinh ra.
+        """
+        self._push_buf(chunk)
+
+    def take_partial_window(self):
+        """Lay cua so de chay partial (thread-safe). None neu im lang / qua ngan.
+
+        Tach khoi `push_fast` de server co the chay ASR o TASK NEN: vong lap nhan audio
+        phai luon nhanh, neu khong uvicorn se ngat ket noi khi buffer day.
+        """
+        win = self._window(self.partial_window)
+        if win is None or len(win) < int(self.sr * 0.3):
+            return None
+        if self._rms(win) < self.gate_rms:
+            return None
+        return win
+
+    def accept_partial(self, text: str):
+        """Loc + dedup ket qua partial. Tra ve chuoi da sach hoac None neu bo qua."""
+        en = _clean_en(text)
+        if not en or en == self.last_final_text or en == self._last_partial:
+            return None
+        self._last_partial = en
+        return en
+
     def push_fast(self, chunk: np.ndarray):
         """Realtime cho CPU yeu: chi ASR (~0.2s), khong dich. NMT chay worker rieng."""
         self._push_buf(chunk)
@@ -172,14 +201,13 @@ class SimultaneousProcessor:
         if now - self.last_emit < self.partial_every:
             return None
         self.last_emit = now
-        win = self._window(self.partial_window)
-        if self._rms(win) < self.gate_rms:
+        win = self.take_partial_window()
+        if win is None:
             return None
         r = self.asr.transcribe(win, self.sr)
-        en = _clean_en(r["text"])
-        if not en or en == self.last_final_text or en == self._last_partial:
+        en = self.accept_partial(r["text"])
+        if not en:
             return None
-        self._last_partial = en
         return {"kind": "partial", "en": en, "asr_ms": r["asr_ms"], "unstable": True}
 
     # ------------------------------------------------------------------ finalize

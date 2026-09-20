@@ -561,7 +561,38 @@ class TestAudioUtils(unittest.TestCase):
         self.assertLess(time.time() - t0, 2.0, "phai bao loi ngay, khong duoc treo")
 
 
-# --------------------------------------------------------------------- 11. client JS/JSON
+# --------------------------------------------------------------------- 12. speaker features
+class TestSpeakerFeatures(unittest.TestCase):
+    """Loi NGHIEM TRONG da gap: librosa.feature.mfcc treo >180s tren may nay (numba JIT)
+    -> LiveSession.finalize_text() goi _mfcc_mean() de gan nhan nguoi noi nen KHONG BAO GIO
+    tra ve => khong co cau final nao, khong co caption nao trong phong."""
+
+    def test_dac_trung_nhanh_va_dung_shape(self):
+        from src.diarization import _mfcc_mean
+        a = (np.random.default_rng(0).standard_normal(32000) * 0.2).astype(np.float32)
+        t0 = time.time()
+        v = _mfcc_mean(a, 16000)
+        dur = time.time() - t0
+        self.assertEqual(np.asarray(v).shape, (13,))
+        self.assertLess(dur, 1.0, "phai chay trong ~ms (truoc day treo >180s)")
+        np.testing.assert_allclose(v, _mfcc_mean(a, 16000))
+
+    def test_audio_rong_va_qua_ngan(self):
+        from src.diarization import _mfcc_mean
+        self.assertEqual(_mfcc_mean(np.zeros(0, dtype=np.float32)).shape, (13,))
+        self.assertEqual(_mfcc_mean(np.zeros(10, dtype=np.float32)).shape, (13,))
+
+    def test_tracker_nhanh(self):
+        from src.diarization import SpeakerTracker
+        a = (np.random.default_rng(1).standard_normal(16000) * 0.2).astype(np.float32)
+        tr = SpeakerTracker()
+        t0 = time.time()
+        for _ in range(5):
+            tr.assign(a)
+        self.assertLess(time.time() - t0, 2.0)
+
+
+# --------------------------------------------------------------------- 13. client JS/JSON
 class TestClientAssets(unittest.TestCase):
     """Loi that da tung lam PWA mobile chet hoan toan: dau '|' lac trong <script>."""
 

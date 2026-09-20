@@ -582,91 +582,163 @@ async def ws_stream(ws: WebSocket):
     await ws.send_json({"kind": "status", "status": "ready",
                         "msg": f"San sang (che do {mode}). Hay noi tieng Anh."})
 
+    # ---------------------------------------------------------------- trang thai
+    # QUAN TRONG: vong lap nhan audio KHONG BAO GIO duoc cho ASR/NMT.
+    # Neu cho, server doc socket cham hon toc do client gui -> uvicorn/websockets
+    # ngat ket noi (da bi that: ConnectionResetError WinError 10054). ASR/NMT chay
+    # o TASK NEN; vong lap chi append buffer (rat nhanh) + quyet dinh endpointing.
+    st = {"partial_busy": False, "final_busy": False,
+          "interval": DEFAULT.partial_every_sec}
+    closed = False
+    partial_task = None
+    final_task = None
     silence_since = None
     speaking = False
     seg_start = time.time()
 
-    async def do_finalize():
+    async def send_safe(obj):
+        if closed:
+            return
+        try:
+            await ws.send_json(obj)
+        except Exception:
+            pass
+
+    async def run_partial():
+        t0 = time.time()
+        try:
+            win = live.sim.take_partial_window()
+            if win is None:
+                return
+            # VAD tat cho partial: cua so ngan, gate nang luong da loc im lang
+            r = await _infer(ASR_LOCK, live.sim.asr.transcribe,
+                             win, live.sim.sr, None, False)
+            en = live.sim.accept_partial(r["text"])
+            if not en:
+                return
+            ev = {"kind": "partial", "en": en, "vi": None, "nmt_ms": 0.0,
+                  "asr_ms": r["asr_ms"], "unstable": True, "audio_vi": None,
+                  "e2e_ms": r["asr_ms"]}
+            if want_vi:
+                vi, nmt_ms = await _infer(NMT_LOCK, live.sim.nmt.translate, en)
+                ev["vi"], ev["nmt_ms"] = vi, nmt_ms
+                ev["e2e_ms"] = r["asr_ms"] + nmt_ms
+            await send_safe(ev)
+        except Exception:
+            pass
+        finally:
+            st["partial_busy"] = False
+            dur = time.time() - t0
+            base = DEFAULT.partial_every_sec
+            # Thich ung theo CPU: ASR cham hon nhip thi gian nhip ra (toi da 4s),
+            # nhanh thi thu lai. Tranh hang doi phia server phinh ra.
+            if dur > 2.0 * base:
+                st["interval"] = min(4.0, max(base, st["interval"] * 1.5))
+            else:
+                st["interval"] = max(base, st["interval"] * 0.85)
+
+    async def run_finalize():
         nonlocal speaking, silence_since, seg_start
         speaking = False
         silence_since = None
         t_end = time.time()
-        fin = await _infer(ASR_LOCK, live.finalize_text)
-        if not fin:
+        try:
+            fin = await _infer(ASR_LOCK, live.finalize_text)
+            if not fin:
+                seg_start = time.time()
+                return
+            fin["t_start"] = seg_start
+            fin["t_end"] = t_end
             seg_start = time.time()
+            t0 = time.time()
+            if want_vi:
+                vi, nmt_ms, info = await _infer(NMT_LOCK, live.translate, fin["en"], True)
+                fin["vi"], fin["nmt_ms"] = vi, nmt_ms
+                fin["scenario"] = info.get("scenario", fin.get("scenario"))
+                fin["numbers_missing"] = info.get("numbers_missing", [])
+            if tts is not None and fin.get("vi"):
+                audio, tts_ms = await _infer(TTS_LOCK, live.speak, fin["vi"])
+                fin["audio_vi"], fin["tts_ms"] = audio, tts_ms
+            fin["e2e_ms"] = float(fin.get("asr_ms", 0.0)) + (time.time() - t0) * 1000
+            STATS["asr_ms"].append(float(fin.get("asr_ms", 0.0)))
+            STATS["nmt_ms"].append(float(fin.get("nmt_ms", 0.0)))
+            STATS["e2e_ms"].append(float(fin.get("e2e_ms", 0.0)))
+            await send_safe(_encode_fin(fin))
+            if sid:
+                cap = rooms.add_caption(
+                    sid, fin["en"], fin.get("vi"), fin.get("speaker", "Speaker 1"),
+                    t_start=fin["t_start"], t_end=fin["t_end"],
+                    asr_ms=fin.get("asr_ms", 0), nmt_ms=fin.get("nmt_ms", 0),
+                    e2e_ms=fin.get("e2e_ms", 0), scenario=fin.get("scenario"))
+                if cap:
+                    STATS["captions"] += 1
+        except Exception:
+            pass
+        finally:
+            st["final_busy"] = False
+
+    def start_finalize():
+        nonlocal final_task
+        if st["final_busy"]:
             return
-        fin["t_start"] = seg_start
-        fin["t_end"] = t_end
-        seg_start = time.time()
-        t0 = time.time()
-        if want_vi:
-            vi, nmt_ms, info = await _infer(NMT_LOCK, live.translate, fin["en"], True)
-            fin["vi"], fin["nmt_ms"] = vi, nmt_ms
-            fin["scenario"] = info.get("scenario", fin.get("scenario"))
-            fin["numbers_missing"] = info.get("numbers_missing", [])
-        if tts is not None and fin.get("vi"):
-            audio, tts_ms = await _infer(TTS_LOCK, live.speak, fin["vi"])
-            fin["audio_vi"], fin["tts_ms"] = audio, tts_ms
-        fin["e2e_ms"] = float(fin.get("asr_ms", 0.0)) + (time.time() - t0) * 1000
-        STATS["asr_ms"].append(float(fin.get("asr_ms", 0.0)))
-        STATS["nmt_ms"].append(float(fin.get("nmt_ms", 0.0)))
-        STATS["e2e_ms"].append(float(fin.get("e2e_ms", 0.0)))
-        payload = _encode_fin(fin)
-        await ws.send_json(payload)
-        if sid:
-            cap = rooms.add_caption(
-                sid, fin["en"], fin.get("vi"), fin.get("speaker", "Speaker 1"),
-                t_start=fin["t_start"], t_end=fin["t_end"],
-                asr_ms=fin.get("asr_ms", 0), nmt_ms=fin.get("nmt_ms", 0),
-                e2e_ms=fin.get("e2e_ms", 0), scenario=fin.get("scenario"))
-            if cap:
-                STATS["captions"] += 1
+        st["final_busy"] = True
+        final_task = asyncio.create_task(run_finalize())
 
     try:
         while True:
             raw = await ws.receive_bytes()
             if len(raw) == 0:                 # client bao DUNG -> chot cau cuoi
-                await do_finalize()
+                if final_task is not None and not final_task.done():
+                    await final_task
+                start_finalize()
+                if final_task is not None:
+                    await final_task
                 continue
             chunk = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            # chi append buffer: rat nhanh, khong goi model o day
+            live.sim.add_audio(chunk)
             rms = float((chunk ** 2).mean() ** 0.5) if len(chunk) else 1.0
             now = time.time()
             if rms >= DEFAULT.speak_rms:
                 speaking = True
                 silence_since = None
-            else:
-                if speaking and silence_since is None:
-                    silence_since = now
+            elif speaking and silence_since is None:
+                silence_since = now
 
-            if want_partial:
-                ev = await _infer(ASR_LOCK, live.sim.push_fast, chunk)
-                if ev:
-                    if want_vi:
-                        vi, nmt_ms = await _infer(NMT_LOCK, live.sim.nmt.translate, ev["en"])
-                        ev["vi"], ev["nmt_ms"] = vi, nmt_ms
-                    ev["audio_vi"] = None
-                    await ws.send_json(ev)
+            # partial: chi spawn khi task truoc da xong + du nhip
+            if (want_partial and not st["partial_busy"]
+                    and now - live.sim.last_emit >= st["interval"]):
+                live.sim.last_emit = now
+                st["partial_busy"] = True
+                partial_task = asyncio.create_task(run_partial())
 
             # endpointing theo GIAY (khong dem chunk -> dung cho moi thiet bi)
-            if speaking and silence_since and now - silence_since >= DEFAULT.final_silence_sec:
-                await do_finalize()
-            elif speaking and now - seg_start > DEFAULT.max_seg_sec:
-                await do_finalize()
+            if not st["final_busy"]:
+                if (speaking and silence_since
+                        and now - silence_since >= DEFAULT.final_silence_sec):
+                    start_finalize()
+                elif speaking and now - seg_start > DEFAULT.max_seg_sec:
+                    start_finalize()
     except WebSocketDisconnect:
         pass
     except Exception as e:
         STATS["errors"] += 1
         import traceback
         traceback.print_exc()
-        try:
-            await ws.send_json({"kind": "status", "status": "error", "msg": str(e)})
-        except Exception:
-            pass
+        await send_safe({"kind": "status", "status": "error", "msg": str(e)})
     finally:
         try:
-            await do_finalize()               # khong mat cau cuoi khi client ngat
+            if partial_task is not None and not partial_task.done():
+                partial_task.cancel()
+            if final_task is not None and not final_task.done():
+                await final_task
+            # khong mat cau cuoi khi client ngat
+            if not st["final_busy"]:
+                st["final_busy"] = True
+                await run_finalize()
         except Exception:
             pass
+        closed = True
         if sid:
             with LIVE_LOCK:
                 LIVE_SESSIONS.pop(sid, None)
