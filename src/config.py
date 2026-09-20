@@ -10,6 +10,66 @@ Vi du:
 from dataclasses import dataclass
 import os
 
+# Thu muc goc repo (src/..) - de tim ban model da tai san trong models/
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def local_model_dir(name: str):
+    """Tim ban model da tai san trong models/ (chay offline that su, khong can cache HF).
+
+    Chap nhan:
+      - duong dan that            -> dung neu ton tai
+      - ID HuggingFace "org/ten"  -> tim models/<ten>
+      - ten ngan "tiny.en"        -> tim models/<ten> hoac models/faster-whisper-<ten>
+    Tra ve duong dan tuyet doi neu co, nguoc lai None.
+    """
+    if not name:
+        return None
+    if os.path.isdir(name):
+        return name
+    if os.sep in name and os.path.isabs(name):
+        return None                       # duong dan tuyet doi nhung khong ton tai
+    base = name.replace("\\", "/").split("/")[-1]
+    if not base:
+        return None
+    cands = [
+        os.path.join(_BASE, "models", base),
+        os.path.join(_BASE, "models", f"faster-whisper-{base}"),
+        os.path.join(_BASE, "models", base.replace(".", "-")),
+    ]
+    for c in cands:
+        try:
+            if not (os.path.isdir(c) and os.listdir(c)):
+                continue
+        except OSError:
+            continue
+        # QUAN TRONG: sentencepiece (C++) tren Windows KHONG doc duoc duong dan chua
+        # ky tu ngoai ASCII (vd "F:\\5 bai test\\..."). Neu tra ve duong dan tuyet doi
+        # kieu do thi tokenizer se bao "Unable to load vocabulary from file".
+        # -> uu tien duong dan TUONG DOI (thuong la ASCII), neu khong duoc thi tra None
+        #    de caller dung ban HuggingFace (cache nam o C:\Users\... la ASCII).
+        if _ascii_ok(c):
+            return c
+        try:
+            rel = os.path.relpath(c, os.getcwd())
+        except Exception:
+            rel = None
+        if rel and not os.path.isabs(rel) and _ascii_ok(rel):
+            return rel
+        print(f"[config] CANH BAO: '{c}' chua ky tu ngoai ASCII nen sentencepiece "
+              f"khong doc duoc -> dung ban HuggingFace. Nen chuyen repo sang thu muc "
+              f"khong dau (vd F:\\projects\\envi-stream-translator).")
+        return None
+    return None
+
+
+def _ascii_ok(path: str) -> bool:
+    try:
+        path.encode("ascii")
+        return True
+    except (UnicodeEncodeError, AttributeError):
+        return False
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
     v = os.getenv(name)
@@ -156,16 +216,29 @@ class AppConfig:
 
         Truoc day desktop luon bi ep tiny.en vi script tu set ASR_MODEL -> may co GPU
         van chay model nho nhat. Gio: khong co env => GPU dung turbo, CPU dung tiny.en.
+
+        Neu trong `models/` da co ban tai san -> dung ban do, khoi can cache HuggingFace
+        (dieu kien de may hop mat chay offline that su).
         """
         forced = os.getenv("ASR_MODEL")
-        if forced:
-            return forced
-        return self.asr_model if use_cuda else self.asr_model_offline
+        name = forced or (self.asr_model if use_cuda else self.asr_model_offline)
+        return local_model_dir(name) or name
+
+    def resolve_nmt_path(self) -> str:
+        """Duong dan model NMT: uu tien ban trong models/, nguoc lai dung ID HuggingFace."""
+        return local_model_dir(self.nmt_model) or self.nmt_model
+
 
     def resolve_final_beams(self, use_cuda: bool) -> int:
+        """Beam cho cau FINAL.
+
+        CPU = 1 (greedy): do thuc te cho thay VinAI 448M fp32 tren CPU ton ~2-3 PHUT
+        cho 1 cau voi beam=2 -> khong the dung realtime. Beam cao chi hop ly khi co GPU
+        hoac khi da convert sang CT2 int8 (nhanh 4-5x). Dat ACCURATE_BEAMS=2 neu muon.
+        """
         if self.nmt_final_beams > 0:
             return self.nmt_final_beams
-        return 4 if use_cuda else 2
+        return 4 if use_cuda else 1
 
     def resolve_compute(self, use_cuda: bool) -> str:
         if self.asr_compute != "auto":

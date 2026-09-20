@@ -153,8 +153,10 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 ## 5. Test
 
 ```powershell
-python -m unittest discover -s tests -t .      # 72 test, ~0.4s, KHÔNG cần model/mạng
+python -m unittest discover -s tests -t .      # 74 test, ~0.4s, KHÔNG cần model/mạng
 ```
+> Lưu ý: nếu máy đang tải model (CPU 100%), một test WebSocket có thể timeout do tranh CPU.
+> Đây là giới hạn của môi trường chạy test, không phải lỗi logic — chạy lại khi máy rảnh.
 - `tests/test_core.py` — lọc hallucination, chống lặp overlap, context engine, PIN hash,
   SRT/VTT timing, diarization ổn định, config, metrics, summarizer + kiểm tra cú pháp JS của PWA/extension.
 - `tests/test_server.py` — tích hợp HTTP/WS thật (TestClient, không tải model): routing,
@@ -224,11 +226,23 @@ scripts/             # tải model offline, convert CT2
 
 ## 8. Hạn chế đã biết
 
+- **CPU chỉ đạt realtime khi có CT2 int8.** Đo thực tế trên máy này: VinAI 448M **fp32**
+  tốn **~2–3 phút cho 1 câu** với beam=2 trên CPU. Vì vậy mặc định CPU dùng **beam=1**, và
+  **bắt buộc** chạy `python scripts/convert_nmt_ct2.py` (int8, nhanh 4–5x) nếu muốn dịch
+  trực tiếp trên CPU. Hệ thống in cảnh báo khi thiếu CT2 và hiện engine đang dùng ở
+  `/health`, `nmt.stats()`, và trên thanh trạng thái của app desktop.
+- **Đường dẫn repo không nên có dấu tiếng Việt.** `sentencepiece` (thư viện C++ của VinAI)
+  trên Windows **không đọc được** đường dẫn chứa ký tự ngoài ASCII — tokenizer sẽ báo
+  `Unable to load vocabulary from file`. `src/config.py:local_model_dir()` đã tự xử lý bằng
+  cách trả về **đường dẫn tương đối ASCII** (hoặc fallback sang cache HuggingFace), nhưng
+  cách chắc chắn nhất là chuyển repo sang thư mục không dấu, ví dụ
+  `F:\projects\envi-stream-translator`. (Repo hiện tại nằm trong `F:\5 bài test\...`.)
 - **Chỉ EN→VI** (đúng phạm vi). Không two-way, không đa ngôn ngữ.
-- Độ trễ thực tế của cascade Whisper→NMT→TTS là **~1.5–3s**, không phải "1s" như marketing.
-  Số đo thật nằm ở `/metrics`.
+- Độ trễ thực tế của cascade Whisper→NMT→TTS là **~1.5–3s** (khi NMT đã tối ưu), không phải
+  "1s" như marketing. Số đo thật nằm ở `/metrics`.
 - Diarization là heuristic MFCC + centroid: đủ để gán nhãn "ai nói câu nào", **không** thay
   thế pyannote cho hội nghị nhiều người nói chồng tiếng.
-- `models/` không nằm trong git (1.7GB) — chạy `scripts/download_offline_models.py` sau khi clone.
+- `models/` không nằm trong git (1.7GB) — chạy `scripts/download_offline_models.py` sau khi
+  clone; script này tải thẳng vào `models/` để chạy offline thật, không phụ thuộc cache HF.
 - Cần `pip install qrcode[pil]` để có ảnh QR (không có thì trả về link, không vỡ).
 - Extension Chrome chưa được test end-to-end trên Chrome thật (chỉ test tĩnh + VM giả lập).

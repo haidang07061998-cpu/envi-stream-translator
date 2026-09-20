@@ -6,6 +6,8 @@ nghieng ve dung tu chuyen nganh (tuong duong "Meeting Details & Keywords" cua Sa
 import time
 import numpy as np
 
+from .config import local_model_dir
+
 
 class FasterWhisperASR:
     """Wrapper Faster-Whisper toi uu cho streaming realtime (chi tieng Anh)."""
@@ -16,6 +18,12 @@ class FasterWhisperASR:
                  gate_rms=0.004):
         from faster_whisper import WhisperModel
         import torch
+        # Uu tien ban model da tai san trong models/ -> chay offline that su,
+        # khong phu thuoc cache HuggingFace.
+        self.requested_model = model_size
+        local = local_model_dir(model_size)
+        if local:
+            model_size = local
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
         if compute_type == "auto":

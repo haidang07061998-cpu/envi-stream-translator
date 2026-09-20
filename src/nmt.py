@@ -47,7 +47,14 @@ class NMTTranslator:
                  num_beams=1, ct2_path=None, accurate_beams=None,
                  cache_size=500, postprocess=None):
         import torch
+        from .config import local_model_dir
+
         self.model_id = model_id
+        # Uu tien ban model da tai san trong models/ -> chay offline that su
+        # (khong can cache HuggingFace, khong can mang).
+        local = local_model_dir(model_id)
+        self.load_path = local or model_id
+        model_id = self.load_path
         self.src, self.tgt = src, tgt
         self.max_len = min(int(max_len), 96)
         self.num_beams = num_beams

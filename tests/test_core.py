@@ -408,15 +408,42 @@ class TestConfig(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "ASR_MODEL"}
         with mock.patch.dict(os.environ, env, clear=True):
             c = AppConfig()
-            self.assertEqual(c.resolve_asr_model(True), c.asr_model)
-            self.assertEqual(c.resolve_asr_model(False), c.asr_model_offline)
+            # co the tra ve ten model hoac duong dan trong models/ -> so sanh phan ten
+            self.assertEqual(os.path.basename(c.resolve_asr_model(True)), c.asr_model)
+            self.assertEqual(os.path.basename(c.resolve_asr_model(False)),
+                             c.asr_model_offline)
         with mock.patch.dict(os.environ, {"ASR_MODEL": "small.en"}, clear=False):
-            self.assertEqual(AppConfig().resolve_asr_model(True), "small.en")
+            self.assertEqual(os.path.basename(AppConfig().resolve_asr_model(True)),
+                             "small.en")
+
+    def test_uu_tien_model_noi_bo(self):
+        """Chay offline that su: neu models/<ten> co san thi phai dung ban do."""
+        from src.config import local_model_dir
+        self.assertIsNone(local_model_dir("khong-ton-tai-xyz"))
+        self.assertIsNone(local_model_dir(""))
+        d = local_model_dir("vinai-translate-en2vi-v2")
+        if d:
+            self.assertTrue(os.path.isdir(d))
+            self.assertEqual(AppConfig().resolve_nmt_path(), d)
+
+    def test_duong_dan_model_phai_ascii(self):
+        """sentencepiece (C++) khong doc duoc duong dan ngoai ASCII tren Windows.
+
+        Repo nam trong 'F:\\5 bai test\\...' (co dau) -> neu tra ve duong dan tuyet doi
+        thi tokenizer loi 'Unable to load vocabulary from file'. Vi vay local_model_dir
+        phai tra ve duong dan tuong doi ASCII, hoac None (dung ban HuggingFace).
+        """
+        from src.config import local_model_dir
+        d = local_model_dir("vinai-translate-en2vi-v2")
+        if d:
+            d.encode("ascii")           # se raise neu con ky tu ngoai ASCII
+            self.assertFalse(os.path.isabs(d) and not d.isascii())
 
     def test_final_beams(self):
         c = AppConfig()
         self.assertEqual(c.resolve_final_beams(True), 4)
-        self.assertEqual(c.resolve_final_beams(False), 2)
+        # CPU = 1: do thuc te VinAI fp32 beam=2 ton ~2-3 phut/cau tren CPU
+        self.assertEqual(c.resolve_final_beams(False), 1)
 
 
 # --------------------------------------------------------------------- 8. metrics
