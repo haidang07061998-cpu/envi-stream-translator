@@ -148,6 +148,9 @@ Mọi tham số nằm ở **một chỗ duy nhất**: `src/config.py` (không ha
 | `ACCURATE_BEAMS` | auto (GPU 4 / CPU 1) | beam cho câu final |
 | `ASR_VAD` | `0` | bật VAD nội bộ của Whisper (tắt nhanh hơn ~15%, kết quả như nhau) |
 | `NMT_INT8` | `0` | int8 dynamic quantization — nhanh hơn nhưng **cụt đuôi câu** (đo được) |
+| `TORCH_THREADS` | `8` | số CPU cho NMT (máy nhiều nhân có thể tăng; quá cao sẽ tranh CPU với ASR) |
+| `FINAL_SILENCE` | `0.8` | giảm xuống `0.5` → chốt câu sớm hơn → bản dịch bắt đầu sớm hơn |
+| `MAX_SEG` | `8.0` | giảm xuống `5` → mỗi câu ngắn hơn → phụ đề VI ra đều hơn |
 | `PARTIAL_VI` | `0` | dịch cả partial (tốn CPU, làm câu final chậm đi) |
 | `ENABLE_CT2` | `0` (**TẮT**) | bật CTranslate2 int8 — chỉ bật sau khi tự kiểm tra chất lượng |
 | `DISABLE_CT2` | `0` | tắt cứng CT2 (thắng cả `ENABLE_CT2`) |
@@ -290,15 +293,37 @@ qua `scripts/push_audio_ws.py`.
 **Kết quả đo cuối** (1 câu ngắn 3s): EN sau **1.7s**, VI sau **+3.5s** (tổng 5.1s).
 Trước khi tối ưu: EN+VI chỉ hiện sau **~14.5s**.
 
-### Đã thử và **TỪ CHỐI** vì chất lượng (quan trọng)
+### Đã thử và **TỪ CHỐI** vì chất lượng/tốc độ (đo trên chính máy này)
 
-| Phương án | Tốc độ | Vì sao từ chối |
-|---|---|---|
-| CTranslate2 int8 | nhanh ~4x | sinh câu **lặp vô nghĩa** (`"Chúng Chúng Chúng chúng..."`); thử cả `int8_float32` và `float32`, cả hai đều hỏng |
-| int8 dynamic quantization | nhanh ~25–40% | **cụt đuôi câu**: đo được chỉ trùng **72%** từ với fp32 (`"...triển khai sản xuất."` → `"...triển khai"`). Mặc định TẮT, bật bằng `NMT_INT8=1` |
-| `Helsinki-NLP/opus-mt-en-vi` (77M, nhanh 2.4x) | 2206ms/câu | **dịch sai**: `"latency"` → `"khoan dung"` / `"khoan hồng"` (vô nghĩa); mất hẳn chữ "mobile" |
+| Phương án | Tốc độ đo được | Chất lượng | Vì sao từ chối |
+|---|---|---|---|
+| CTranslate2 int8 | nhanh ~4x | **rác** | sinh câu lặp vô nghĩa (`"Chúng Chúng Chúng chúng..."`); thử cả `int8_float32` và `float32` — cả hai đều hỏng |
+| CTranslate2 float32 | 10.7s/câu | **rác** | vẫn lặp ⇒ lỗi ở bộ convert mBART, không phải ở lượng tử hoá |
+| torch int8 dynamic | nhanh ~25–40% | **cụt đuôi** | chỉ trùng **72%** từ với fp32 (`"...triển khai sản xuất."` → `"...triển khai"`) |
+| `Helsinki-NLP/opus-mt-en-vi` (77M) | 2206ms/câu | **sai nghĩa** | `"latency"` → `"khoan dung"` / `"khoan hồng"`; mất chữ "mobile" |
+| `VietAI/envit5-translation` (T5-base ~220M) | **3163ms/câu (chậm hơn)** | BLEU **64.0** | chậm hơn VinAI mà tệ hơn; `"deployment plan"` → `"kế hoạch triển khai **quân**"` (ảo giác) |
+| **ONNX Runtime fp32** (optimum export) | **7870ms/câu (chậm 2.2x)** | BLEU 74.0 (y hệt) | chất lượng không đổi nhưng **chậm hơn PyTorch** ⇒ không có lợi ích |
 
-⇒ **Giữ VinAI en2vi-v2 fp32** — chậm hơn nhưng đúng. Muốn nhanh hơn nữa thì cần **GPU**.
+⇒ **Giữ VinAI en2vi-v2 fp32** (`BLEU 74.0 | chrF 81.5`). Muốn nhanh hơn nữa thì phải **GPU**.
+
+### 5 nhóm cách tăng tốc — xếp theo hiệu quả thực tế
+
+| # | Cách | Hiệu quả đo được | Mất chất lượng? |
+|---|---|---|---|
+| **1** | **Đóng ứng dụng khác + chỉ chạy 1 tiến trình** (server **hoặc** desktop) | **3x** (NMT 3.5s → 1.1s) | Không |
+| **2** | `torch.inference_mode()` + tắt VAD + không dịch partial + gửi EN trước | NMT 2.4x, EN hiện sau 1.7s | Không |
+| **3** | Giảm `FINAL_SILENCE=0.5`, `MAX_SEG=5`, `PARTIAL_EVERY=0.5` | bản dịch bắt đầu sớm hơn ~0.3–0.5s | Không |
+| **4** | **GPU** (nếu có) | 10–30x cho NMT | Không |
+| **5** | Lượng tử hoá / model nhỏ hơn | 1.2–4x | **CÓ** — cả 5 phương án đã thử đều hỏng (bảng trên) |
+
+**Cách tự đo lại** (đừng tin lời, hãy đo):
+```powershell
+python scripts/bench_nmt_quality.py     # BLEU/chrF + ms/câu của từng model
+python scripts/bench_optimize.py        # ASR: VAD on/off; NMT: fp32 vs int8
+python scripts/bench_nmt_models.py      # so model nhỏ hơn
+python scripts/bench_onnx.py            # ONNX Runtime (fp32 + int8)
+python scripts/push_audio_ws.py --file out/short_en.mp3   # độ trễ thật end-to-end
+```
 
 ### ⚠️ Cảnh báo quan trọng về máy
 

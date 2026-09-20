@@ -124,7 +124,10 @@ class NMTTranslator:
 
         try:
             n = os.cpu_count() or 4
-            torch.set_num_threads(max(1, min(n, 8)))
+            # TORCH_THREADS: tu chinh so luong CPU cho NMT (may nhieu nhan co the tang).
+            # Mac dinh 8 - qua cao se tranh CPU voi ASR.
+            want = int(os.getenv("TORCH_THREADS", "0") or 0)
+            torch.set_num_threads(max(1, min(want or n, 8 if not want else 32)))
             torch.set_num_interop_threads(1)
         except Exception:
             pass
