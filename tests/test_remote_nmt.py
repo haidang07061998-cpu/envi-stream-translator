@@ -152,6 +152,55 @@ class TestBuildNmt(unittest.TestCase):
             self.assertEqual(n.engine, "remote:http://gpu:8000")
 
 
+class TestHopMatChanGpu(unittest.TestCase):
+    """RIENG TU: che do HOP MAT phai CHAN gui text len GPU thue.
+
+    Loi that: desktop_app_v2.py ep CONFIDENTIAL=1 nhung build_nmt() van gui text len
+    may GPU -> pha vo chinh cam ket 'hop mat' (dung loi Saydi bi chi ra).
+    """
+
+    def setUp(self):
+        self.env = {k: v for k, v in os.environ.items()
+                    if k not in ("ALLOW_REMOTE_IN_CONFIDENTIAL",)}
+
+    def test_hop_mat_thi_chan(self):
+        from src.config import DEFAULT
+        from src.nmt import effective_remote_url
+        with mock.patch.dict(os.environ, {**self.env, "NMT_REMOTE_URL": "https://gpu"},
+                             clear=True), \
+             mock.patch.object(DEFAULT, "confidential", True):
+            self.assertEqual(effective_remote_url(), "",
+                             "hop mat ma van gui text len GPU la RO RI du lieu")
+
+    def test_hop_mat_nhung_cho_phep_ro_thi_duoc(self):
+        from src.config import DEFAULT
+        from src.nmt import effective_remote_url
+        with mock.patch.dict(os.environ, {**self.env, "NMT_REMOTE_URL": "https://gpu",
+                                          "ALLOW_REMOTE_IN_CONFIDENTIAL": "1"},
+                             clear=True), \
+             mock.patch.object(DEFAULT, "confidential", True):
+            self.assertEqual(effective_remote_url(), "https://gpu")
+
+    def test_khong_hop_mat_thi_dung_gpu(self):
+        from src.config import DEFAULT
+        from src.nmt import effective_remote_url
+        with mock.patch.dict(os.environ, {**self.env, "NMT_REMOTE_URL": "https://gpu"},
+                             clear=True), \
+             mock.patch.object(DEFAULT, "confidential", False):
+            self.assertEqual(effective_remote_url(), "https://gpu")
+
+    def test_khong_co_url_thi_rong(self):
+        import src.config as cfg
+        import tempfile
+        from src.nmt import effective_remote_url
+        # tro _BASE vao thu muc tam: neu khong se doc nham gpu_url.txt that cua repo
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.dict(os.environ, self.env, clear=True), \
+             mock.patch.object(cfg, "_BASE", d), \
+             mock.patch.object(cfg.DEFAULT, "confidential", False):
+            self.assertEqual(effective_remote_url(), "")
+
+
 class TestGpuUrlConfig(unittest.TestCase):
     """Tich hop: URL may GPU doc tu bien moi truong HOAC file gpu_url.txt."""
 

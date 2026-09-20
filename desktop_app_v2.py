@@ -18,8 +18,33 @@ Nang cap theo loi (core src/ da duoc viet lai):
 import os
 
 # Hop mat / offline: phai dat TRUOC khi import src.config (DEFAULT duoc tao luc import).
-os.environ["OFFLINE"] = "1"
-os.environ["CONFIDENTIAL"] = "1"
+os.environ.setdefault("OFFLINE", "1")
+
+# --- Che do HOP MAT vs che do GPU TU XA -------------------------------------
+# Doc `gpu_url.txt` TRUOC khi import src.config (vi DEFAULT duoc tao ngay luc import,
+# nen khong the import src.config o day roi moi doi bien moi truong).
+#
+#   - Co cau hinh may GPU thue -> che do HYBRID: chi TEXT roi khoi may (audio thi khong)
+#     => KHONG ep CONFIDENTIAL, vi "hop mat" nghia la khong gui gi ra ngoai.
+#   - Khong co may GPU -> ep CONFIDENTIAL=1: chay 100% tai may, khong ra Internet.
+_gpu_url = (os.getenv("NMT_REMOTE_URL", "") or "").strip().rstrip("/")
+if not _gpu_url:
+    try:
+        import pathlib
+        _p = pathlib.Path(__file__).with_name("gpu_url.txt")
+        if _p.is_file():
+            for _line in _p.read_text(encoding="utf-8-sig").splitlines():
+                _line = _line.strip()
+                if _line.startswith("http"):
+                    _gpu_url = _line.rstrip("/")
+                    break
+    except Exception:
+        pass
+if not _gpu_url:
+    os.environ.setdefault("CONFIDENTIAL", "1")
+    _MODE_NOTE = "HOP MAT - khong gui gi ra Internet"
+else:
+    _MODE_NOTE = f"HYBRID - chi gui TEXT len GPU ({_gpu_url})"
 
 import time
 import queue
@@ -457,13 +482,24 @@ class App:
         tk.Button(row3, text="DÙNG MÁY NÀY (CPU)", bg=CARD, fg="#e5e7eb",
                   font=("Segoe UI", 9), relief="flat", padx=8, pady=4,
                   command=self.use_local_cpu).pack(side="left")
-        self.gpu_lbl = tk.Label(row3, text="", bg=CARD, fg="#9fb3ff",
+        self.gpu_lbl = tk.Label(row3,
+                                text=("✔ đang dùng GPU từ xa" if _gpu_url
+                                      else "đang dùng CPU của máy này"),
+                                bg=CARD, fg=("#86efac" if _gpu_url else "#9fb3ff"),
                                 font=("Segoe UI", 9))
         self.gpu_lbl.pack(side="left", padx=6)
         tk.Label(ctx, text=("Dán URL https://...trycloudflare.com từ Kaggle/Colab rồi bấm "
                             "KIỂM TRA + LƯU.\nĐể trống = dịch ngay tại máy (CPU). "
                             "Đổi phiên Kaggle thì dán URL mới."),
                  bg=CARD, fg="#64748b", font=("Segoe UI", 8), justify="left").pack(
+                     anchor="w", padx=10, pady=(0, 2))
+        # Noi ro che do dang chay - de nguoi dung biet du lieu co roi khoi may khong
+        tk.Label(ctx, text=(f"CHẾ ĐỘ: {_MODE_NOTE}"
+                            + ("  —  text (không phải audio) sẽ gửi lên máy GPU."
+                               if _gpu_url else
+                               "  —  không có gì gửi ra ngoài.")),
+                 bg=CARD, fg=(WARN if _gpu_url else "#86efac"),
+                 font=("Segoe UI", 8, "bold"), justify="left").pack(
                      anchor="w", padx=10, pady=(0, 6))
 
         self.status = tk.Label(self.root, text="Đang khởi động...", bg=CARD,

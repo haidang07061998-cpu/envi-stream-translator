@@ -173,6 +173,32 @@ class RemoteNMT:
                 "cache": len(self._cache), "cache_hits": self.cache_hits}
 
 
+def effective_remote_url() -> str:
+    """URL may GPU se dung THAT SU. Rong neu khong co, HOAC bi chan vi che do hop mat.
+
+    QUAN TRONG (tinh rieng tu): che do HOP MAT (`CONFIDENTIAL=1`) nghia la KHONG duoc
+    gui gi ra ngoai may. Neu van gui text len GPU thue thi pha vo chinh cam ket do -
+    dung loi ma Saydi bi chi ra (quang cao "on-device" nhung thuc te gui len cloud).
+
+    Muon dung GPU trong che do hop mat thi phai noi ro y dinh:
+        set ALLOW_REMOTE_IN_CONFIDENTIAL=1
+    """
+    url = remote_nmt_url()
+    if not url:
+        return ""
+    try:
+        from .config import DEFAULT
+        if DEFAULT.confidential and os.getenv("ALLOW_REMOTE_IN_CONFIDENTIAL", "0") != "1":
+            print("[NMT] !!! CHE DO HOP MAT dang bat -> KHONG gui text len may GPU thue.")
+            print("[NMT]     Dang dung model tai may (cham hon nhung khong ro ri du lieu).")
+            print("[NMT]     Muon dung GPU: tat CONFIDENTIAL, hoac dat "
+                  "ALLOW_REMOTE_IN_CONFIDENTIAL=1 (chap nhan text roi khoi may).")
+            return ""
+    except Exception:
+        pass
+    return url
+
+
 def build_nmt(model_id="vinai/vinai-translate-en2vi-v2", src="en_XX", tgt="vi_VN",
               **kwargs):
     """Tao bo dich: dung may GPU thue neu co NMT_REMOTE_URL, nguoc lai chay tai may.
@@ -180,7 +206,7 @@ def build_nmt(model_id="vinai/vinai-translate-en2vi-v2", src="en_XX", tgt="vi_VN
     Day la diem vao duy nhat nen dung (server, desktop) de bat/tat che do GPU tu xa
     chi bang 1 bien moi truong.
     """
-    url = remote_nmt_url()
+    url = effective_remote_url()
     if url:
         print(f"[NMT] CHE DO GPU TU XA: chi gui TEXT len {url} "
               f"(audio khong roi khoi may, khong can model 1.8GB)")
