@@ -29,3 +29,6 @@ Thumbs.db
 
 # --- bao cao sinh tu dong (giu lai ban nguon) ---
 !SAYDI_AI_RESEARCH_REPORT.md
+
+# --- goi de upload len Kaggle (tao lai bang lenh trong docs/GPU_RENTAL.md) ---
+dist/

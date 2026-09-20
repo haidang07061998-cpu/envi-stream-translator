@@ -665,6 +665,35 @@ class TestClientAssets(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(ROOT, "extension", r)),
                             f"manifest tro toi file khong ton tai: {r}")
 
+    def test_kaggle_notebook_hop_le(self):
+        """Notebook Kaggle phai la JSON hop le va moi code cell compile duoc."""
+        p = os.path.join(ROOT, "kaggle_envi_server.ipynb")
+        if not os.path.exists(p):
+            self.skipTest("chua co notebook Kaggle")
+        with open(p, encoding="utf-8") as f:
+            nb = json.load(f)
+        self.assertEqual(nb.get("nbformat"), 4)
+        codes = [c for c in nb["cells"] if c.get("cell_type") == "code"]
+        self.assertGreaterEqual(len(codes), 1, "notebook phai co it nhat 1 code cell")
+        for i, c in enumerate(codes):
+            compile("".join(c.get("source") or []), f"kaggle_cell_{i}", "exec")
+
+    def test_kaggle_server_script_compile(self):
+        p = os.path.join(ROOT, "scripts", "colab_kaggle_server.py")
+        r = subprocess.run([sys.executable, "-m", "py_compile", p],
+                           capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stderr.decode("utf-8", "ignore")[:300])
+
+    def test_kaggle_script_nhan_dien_thu_muc_du_an(self):
+        """Script Kaggle phai tim dung thu muc du an (co app/server.py)."""
+        import importlib.util
+        p = os.path.join(ROOT, "scripts", "colab_kaggle_server.py")
+        spec = importlib.util.spec_from_file_location("kgs", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        self.assertTrue(m._looks_like_repo(ROOT))
+        self.assertFalse(m._looks_like_repo(os.path.join(ROOT, "src")))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

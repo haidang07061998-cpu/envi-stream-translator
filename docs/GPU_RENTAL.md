@@ -16,17 +16,44 @@ xuống **~0.15–0.25s/câu** ⇒ đạt realtime thật. Dưới đây là cá
 
 > Modal cũng tặng **$30 compute miễn phí mỗi tháng** ở gói Starter — đủ cho ~50 giờ GPU T4.
 
-### Chạy trên Kaggle (miễn phí, 30h/tuần)
-Trong notebook Kaggle, bật **Accelerator = GPU T4 ×2** rồi:
-```python
-!pip install -q faster-whisper transformers sentencepiece ctranslate2
-!git clone https://github.com/<ban>/envi-stream-translator.git
-%cd envi-stream-translator
-import sys; sys.path.insert(0, '.')
-# chạy pipeline trên file audio có sẵn trong /kaggle/input/...
-!python kaggle_test.py --audio /kaggle/input/<dataset>/sample.wav --ref_en "..." --ref_vi "..."
+### Chạy trên Kaggle (miễn phí, 30h/tuần) — **đã có sẵn mọi thứ**
+
+Repo đã chuẩn bị 2 file để bạn không phải copy-paste:
+- `kaggle_envi_server.ipynb` — notebook import thẳng vào Kaggle
+- `dist/envi-stream-translator-kaggle.zip` — gói code 194 KB để upload làm dataset
+  (tạo lại bằng lệnh ở mục *Tạo lại gói zip* bên dưới)
+
+**5 bước (khoảng 3 phút):**
+
+| Bước | Thao tác |
+|---|---|
+| 1 | Kaggle → **Datasets** → **New Dataset** → kéo thả `dist/envi-stream-translator-kaggle.zip` → **Create** |
+| 2 | Mở notebook của bạn → panel **Settings** → **Accelerator: GPU T4 ×2**, **Internet: ON** (cần xác minh số điện thoại) |
+| 3 | Panel **Data** / **Add Input** → chọn dataset vừa tạo |
+| 4 | **File → Import Notebook** → chọn `kaggle_envi_server.ipynb` (hoặc dán nội dung file vào 1 cell) |
+| 5 | **Run All** → đợi 3–6 phút → script in ra `https://<tên>.trycloudflare.com` |
+
+Sau đó:
+- `<URL>/m` — nói tiếng Anh (mic chạy được vì là `https`)
+- `<URL>/room/<sid>` — người nghe / quét QR
+- Trên máy bạn, muốn nhẹ RAM: `set NMT_REMOTE_URL=<URL>` rồi chạy `desktop_app_v2.py`
+
+Script tự làm hết: kiểm tra GPU + Internet → cài thư viện thiếu → **tìm code trong dataset
+(chỉ đọc) và copy sang `/kaggle/working`** để ghi được model → tải model → chạy server → mở tunnel.
+
+**Tạo lại gói zip** (khi bạn sửa code, chạy lại lệnh này rồi upload lại dataset):
+```powershell
+$root = (Get-Location).Path
+$stage = "$root\dist\envi-stream-translator"
+Remove-Item -Recurse -Force "$root\dist" -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $stage -Force | Out-Null
+robocopy $root $stage /E /XD models out .git __pycache__ .playwright-mcp .venv venv dist /XF *.log *.zip /NFL /NDL /NJH /NJS /NP | Out-Null
+Compress-Archive -Path $stage -DestinationPath "$root\dist\envi-stream-translator-kaggle.zip" -Force
+Remove-Item -Recurse -Force $stage
 ```
-Kaggle không mở được port ra Internet, nên dùng nó để **đo tốc độ/độ chính xác**, không để làm server.
+
+> Kaggle **chỉ trừ giờ GPU khi cell đang chạy** — đóng notebook là không tốn gì.
+> Phiên kéo dài ~9–12 giờ; hết thì chạy lại cell 2 là có URL mới.
 
 ---
 
