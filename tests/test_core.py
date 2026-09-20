@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -693,6 +694,30 @@ class TestClientAssets(unittest.TestCase):
         spec.loader.exec_module(m)
         self.assertTrue(m._looks_like_repo(ROOT))
         self.assertFalse(m._looks_like_repo(os.path.join(ROOT, "src")))
+
+    def test_kaggle_tim_model_da_luu_de_khoi_tai_lai(self):
+        """Kaggle xoa /kaggle/working moi phien -> model phai tai lai 3-6 phut.
+
+        Neu nguoi dung da luu model thanh dataset (Add Input), script phai TIM THAY
+        va lien ket lai thay vi tai lai.
+        """
+        import importlib.util
+        import tempfile
+        p = os.path.join(ROOT, "scripts", "colab_kaggle_server.py")
+        spec = importlib.util.spec_from_file_location("kgs_cache", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(m, "INPUTS", [d]):
+                self.assertIsNone(m.find_cached_models(), "chua co model thi tra None")
+            mm = os.path.join(d, "notebook-output", "models",
+                              "vinai-translate-en2vi-v2")
+            os.makedirs(mm)
+            with mock.patch.object(m, "INPUTS", [d]):
+                self.assertEqual(
+                    m.find_cached_models(),
+                    os.path.join(d, "notebook-output", "models"))
 
     def test_zip_kaggle_dung_chuan_zip(self):
         """LOI THAT: Compress-Archive cua PowerShell ghi '\\' vao ten entry -> Kaggle tu choi.

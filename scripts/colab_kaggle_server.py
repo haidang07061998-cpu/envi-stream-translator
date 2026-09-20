@@ -188,13 +188,64 @@ def find_repo():
 
 
 # ---------------------------------------------------------------- 4. model
+def find_cached_models():
+    """Tim thu muc `models` da luu san trong /kaggle/input (dataset) de khoi tai lai.
+
+    Kaggle xoa sach /kaggle/working moi phien -> model phai tai lai (3-6 phut).
+    Neu nguoi dung da "Save Version" mot lan roi Add Input chinh output do, model
+    nam trong /kaggle/input va chi can lien ket lai -> tiet kiem vai phut moi phien.
+    """
+    for base in INPUTS:
+        if not os.path.isdir(base):
+            continue
+        for root, dirs, _files in os.walk(base):
+            if root[len(base):].count(os.sep) > 4:
+                dirs[:] = []
+                continue
+            if os.path.basename(root) != "models":
+                continue
+            try:
+                names = os.listdir(root)
+            except OSError:
+                continue
+            if any("vinai" in n or "faster-whisper" in n or "piper" in n for n in names):
+                return root
+    return None
+
+
 def step_models(repo):
-    log("\n=== [4/5] Tai model (lan dau vai phut) ===")
+    log("\n=== [4/5] Chuan bi model ===")
     os.chdir(repo)
     sys.path.insert(0, repo)
-    if os.path.isdir(os.path.join(repo, "models", "vinai-translate-en2vi-v2")):
+    dest = os.path.join(repo, "models")
+    if os.path.isdir(os.path.join(dest, "vinai-translate-en2vi-v2")):
         log("  da co model trong models/")
         return
+
+    cached = find_cached_models()
+    if cached:
+        log(f"  thay model luu san: {cached}")
+        log(f"  -> lien ket vao {dest} (khong phai tai lai, tiet kiem 3-6 phut)")
+        os.makedirs(dest, exist_ok=True)
+        for name in os.listdir(cached):
+            src, dst = os.path.join(cached, name), os.path.join(dest, name)
+            if os.path.exists(dst):
+                continue
+            try:
+                os.symlink(src, dst)          # instant, khong ton dung luong
+            except Exception:
+                try:
+                    if os.path.isdir(src):
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                except Exception as e:
+                    log(f"    [!] khong lay duoc {name}: {e}")
+        if os.path.isdir(os.path.join(dest, "vinai-translate-en2vi-v2")):
+            return
+        log("  [!] lien ket khong day du -> tai lai")
+
+    log("  chua co model -> tai ve (3-6 phut, chi lan dau moi phien)")
     sh(f"{sys.executable} scripts/download_offline_models.py", check=False)
 
 
