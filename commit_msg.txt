@@ -1,0 +1,29 @@
+fix: dien thoai quet QR khong vao duoc - Windows Firewall chan cong 8000
+
+Nguoi dung bao dien thoai quet ma QR khong truy cap duoc. Da chan doan ra
+NGUYEN NHAN THAT tren may nay:
+
+  Tren may chi co DUY NHAT 1 rule inbound mo cong 8000:
+     Rule Name: "WazuhLab HTTP 8000"   (di tich tu lab khac)
+     RemoteIP : 192.168.254.0/24       <-- CHI subnet nay
+  Nhung may dang o 192.168.1.2 => dien thoai (192.168.1.x) KHONG duoc rule phu
+  => Windows Firewall (BlockInbound mac dinh) CHAN ket noi tu dien thoai.
+
+Da kiem chung truoc khi ket luan: server CO nghe tren 192.168.1.2:8000
+(check_lan.py buoc 2 tra ve 200) => khong phai loi binding, dung la firewall.
+
+DA SUA:
+- scripts/open_firewall.ps1: them rule "EN-VI Translator 8000" dir=in allow
+  protocol=TCP localport=8000 profile=any (moi profile, moi IP nguon).
+  Tu xin quyen qua UAC 1 lan; cac lan sau tu bo qua.
+- run_envi.bat: goi open_firewall.ps1 truoc khi khoi dong server
+- scripts/check_lan.py: chan doan 4 buoc (server / nghe tren IP LAN / IP se ghi
+  vao QR / firewall) + canh bao khi may co nhieu IP (VPN/VirtualBox lam QR sai IP)
+  + huong dan khi router bat AP isolation
+- Da chay that: rule duoc them, check_lan.py bao "KHONG THAY VAN DE TU PHIA MAY CHU"
+
+Loi da sua trong qua trinh lam:
+- firewall_rules() parse sai: ket luan ngay khi thay "Action: Allow" nen liet ke
+  nham 100+ rule khong lien quan -> phai gom ca khoi rule roi moi ket luan
+- Bao loi khi co rule HEP du khong con rule nao khac: allow rule la cong don,
+  chi bao loi khi KHONG rule nao phu IP

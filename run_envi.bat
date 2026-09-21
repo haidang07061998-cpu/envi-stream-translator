@@ -106,6 +106,12 @@ powershell -NoProfile -Command "$p=@(); netstat -ano | Select-String 'LISTENING'
 del server.pid >nul 2>&1
 ping -n 3 127.0.0.1 >nul
 
+REM --- MO CONG 8000 cho DIEN THOAI trong cung WiFi ---
+REM     Windows Firewall mac dinh CHAN ket noi tu may khac. Lan dau se hien UAC
+REM     (bam Yes). Cac lan sau tu bo qua vi rule da co.
+echo   Kiem tra cong cho dien thoai...
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\open_firewall.ps1
+
 REM --- IP trong LAN de ma QR / link nguoi nghe dung duoc tren dien thoai ---
 set "LANIP=127.0.0.1"
 for /f "delims=" %%i in ('python -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.connect(('8.8.8.8',80));print(s.getsockname()[0])" 2^>nul') do set "LANIP=%%i"
