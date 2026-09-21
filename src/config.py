@@ -143,13 +143,14 @@ def extract_gpu_url(text: str) -> str:
     """
     if not text:
         return ""
-    for pat in (r"https://[a-z0-9-]+\.trycloudflare\.com",
-                r"https://[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io)",
-                r"https://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net"):
+    for pat in (r"https?://[a-z0-9-]+\.trycloudflare\.com",
+                r"https?://[a-z0-9-]+\.ngrok(?:-free)?\.(?:app|io)",
+                r"https?://[a-z0-9-]+\.[a-z0-9-]+\.ts\.net"):
         m = re.search(pat, text, re.I)
         if m:
             return m.group(0).rstrip("/")
-    m = re.search(r"https://[A-Za-z0-9._-]+(?::\d+)?", text)
+    # cuoi cung: URL http/https bat ky (vd may GPU tu dung trong LAN)
+    m = re.search(r"https?://[A-Za-z0-9._:-]+", text)
     return m.group(0).rstrip("/") if m else ""
 
 

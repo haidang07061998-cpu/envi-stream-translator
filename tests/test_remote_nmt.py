@@ -230,6 +230,14 @@ class TestExtractGpuUrl(unittest.TestCase):
         self.assertEqual(extract_gpu_url(""), "")
         self.assertEqual(extract_gpu_url(None), "")
 
+    def test_nhan_ca_http_cho_may_tu_dung(self):
+        """May GPU tu dung trong LAN co the dung http:// (khong phai https://)."""
+        from src.config import extract_gpu_url
+        self.assertEqual(extract_gpu_url("http://127.0.0.1:8001"),
+                         "http://127.0.0.1:8001")
+        self.assertEqual(extract_gpu_url("may GPU: http://192.168.1.50:8000/"),
+                         "http://192.168.1.50:8000")
+
 
 class TestGpuUrlConfig(unittest.TestCase):
     """Tich hop: URL may GPU doc tu bien moi truong HOAC file gpu_url.txt."""
