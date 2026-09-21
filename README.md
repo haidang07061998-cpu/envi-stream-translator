@@ -492,3 +492,61 @@ curl http://localhost:8000/health     # xem "nmt": {"engine": "remote:https://..
 > ⚠️ **Đừng chạy `run_hop_mat_offline.bat` cho kiến trúc này** — chế độ họp mật sẽ **chặn**
 > gửi text lên GPU (đúng theo thiết kế). Muốn vừa họp mật vừa dùng GPU thì phải nói rõ:
 > `set ALLOW_REMOTE_IN_CONFIDENTIAL=1`.
+
+---
+
+## 12. Hai chế độ: OFFLINE và ONLINE
+
+**Đúng — có 2 chế độ theo tiêu chí "dữ liệu có rời khỏi máy hay không".** Nhưng có **2 trục
+độc lập**, nên thực tế là 4 cách dùng.
+
+### Trục 1 — Dữ liệu: OFFLINE / HỢP MẬT vs ONLINE (hybrid)
+
+| | **OFFLINE / HỢP MẬT** | **ONLINE (hybrid)** |
+|---|---|---|
+| Dịch EN→VI ở đâu | CPU tại máy | GPU thuê (Kaggle/Colab/Modal) |
+| **Dữ liệu rời máy?** | ❌ **KHÔNG GÌ CẢ** | ⚠️ chỉ **TEXT** (audio thì không) |
+| TTS giọng Việt | Piper / SAPI5 (offline) | Edge (gửi text lên Microsoft) |
+| Tóm tắt cuộc họp | trích rút offline | trích rút offline (LLM nếu có key) |
+| Tốc độ NMT | 1.1–3.5 s/câu | **0.17 s/câu** |
+| Cần mạng | Không | Có |
+
+### Trục 2 — Giao diện: app desktop vs server localhost
+
+| | **App desktop** | **Server localhost + trình duyệt/QR** |
+|---|---|---|
+| Cần `localhost` | ❌ không | ✅ có (`localhost:8000`) |
+| Nhiều người nghe | ❌ không | ✅ có — **đã đo 2.000 người, 100% thành công** |
+| Nguồn âm thanh | mic máy **hoặc âm thanh hệ thống** (loopback) | mic trình duyệt (cần localhost/https) |
+
+### Bảng chứng — chế độ thực tế theo biến môi trường (đã chạy)
+
+```
+Truong hop                   offline  confidential  TTS       dung GPU?
+Mac dinh (khong dat gi)      False    False         edge      khong
+OFFLINE=1                    True     False         offline   khong
+CONFIDENTIAL=1               True     True          offline   khong
+Co GPU tu xa                 False    False         edge      CO
+CONFIDENTIAL=1 + GPU         True     True          offline   khong   <- CHAN co chu dich
+```
+
+### File khởi động nào ứng với chế độ nào
+
+| File | Chế độ | Dùng khi |
+|---|---|---|
+| `run_desktop_v2.bat` | **Tự động**: có `gpu_url.txt` → ONLINE, không có → OFFLINE | Dùng hằng ngày |
+| `run_desktop_offline.bat` | OFFLINE **bắt buộc** (kể cả có `gpu_url.txt`) | Họp nội bộ nhạy cảm |
+| `run_localhost_gpu.bat` | ONLINE + server localhost + QR cho người nghe | Demo / hội thảo |
+| `run_hop_mat_offline.bat` / `.ps1` | OFFLINE + server localhost | Phòng họp mật, người nghe trong LAN |
+
+### 🔑 Điểm quan trọng nhất
+
+**`CONFIDENTIAL=1` chặn CẢ GPU từ xa** — đây là **thiết kế có chủ đích**, không phải lỗi:
+chế độ họp mật nghĩa là *không gì rời khỏi máy*, nên không thể vừa "mật" vừa gửi text lên cloud.
+Muốn làm vậy phải nói rõ ý định:
+
+```powershell
+set ALLOW_REMOTE_IN_CONFIDENTIAL=1
+```
+
+Hệ thống in cảnh báo rõ ràng khi bị chặn, và **không bao giờ âm thầm gửi dữ liệu ra ngoài**.
