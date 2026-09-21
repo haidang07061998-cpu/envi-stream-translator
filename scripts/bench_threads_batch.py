@@ -48,12 +48,16 @@ def main():
         except Exception as e:
             log(f"  {th:2d} threads: khong dat duoc ({e})")
             continue
-        # bo qua lan chay dau (warm) roi do lan 2
+        # bo qua lan chay dau (warm) roi do lan 2.
+        # PHAI xoa cache truoc khi do: neu khong se toan la cache hit -> 0 ms
+        # (loi da gap: them dau cach vao cau khong giup gi vi translate() strip() no)
         for s in SHORT:
             n.translate(s, accurate=False)
+        n._cache.clear()
+        n._cache_order.clear()
         t0 = time.time()
         for s in SHORT:
-            n.translate(s + " ", accurate=False)      # them space -> khac cache
+            n.translate(s, accurate=False)
         dt = (time.time() - t0) / len(SHORT) * 1000
         log(f"  {th:2d} threads: {dt:7.0f} ms/cau")
         if dt < best[1]:

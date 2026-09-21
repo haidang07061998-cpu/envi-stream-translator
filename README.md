@@ -361,6 +361,47 @@ cloud; máy bạn chỉ còn trình duyệt (hoặc ASR nhẹ). Chi tiết thuê
 | **2. HYBRID (khuyến nghị)** | ASR + TTS + giao diện | **chỉ NMT** | **~300MB** (đo thật: 302MB vs 2202MB) | ~1.1s + 0.2s | **audio KHÔNG rời máy**, chỉ text |
 | **3. Toàn bộ ở máy** (hiện tại) | tất cả | không | ~2.2GB | 5–9s | không rời máy |
 
+### ⚡ Chế độ OFFLINE chậm ở đâu — và đã tối ưu gì (đo thật)
+
+Đo trên máy này (CPU 12 nhân, không GPU), câu ngắn 3s:
+
+```
+ASR  : 1.2–1.5s   (20–30%)   <- tiny.en, đã nhanh
+NMT  : 3.0–3.5s   (70–80%)   <- VinAI 448M fp32 tren CPU  <== NUT THAT
+TTS  : 0s (không bật)
+Tổng : ~4.3–4.9s / câu
+```
+
+**Đã tối ưu (đo có đối chứng):**
+
+| Tối ưu | Trước | Sau | Chất lượng |
+|---|---|---|---|
+| **Luôn tách câu + GOP BATCH** (trước chỉ batch khi câu >40 từ) | 23.6s (3 câu, dịch từng câu) | **18.2s** → nhanh **1.30x** | **BLEU 62.2 → 71.4** (tốt hơn!) |
+| **`TORCH_THREADS=4`** làm mặc định (trước 8) | 3088 ms/câu | **2930 ms/câu** | không đổi |
+| Đo trong pipeline thật (offline, câu ngắn) | NMT 3544ms, e2e 4889ms | **NMT 3006ms, e2e 4253ms** | không đổi |
+
+> Quét thread trên máy 12 nhân: **4 thread = 2930ms** · 8 = 3088 · 12 = 3116
+> ⇒ nhiều thread hơn **không** nhanh hơn (tranh CPU), và 4 thread còn chừa CPU cho ASR.
+
+**Yếu tố ảnh hưởng lớn nhất: ứng dụng khác đang chạy.** Đo được cùng một câu:
+**NMT 1.1s khi máy rảnh** nhưng **3.5s khi trình duyệt (Edge) đang chiếm CPU** — chênh **3x**.
+⇒ Dùng chế độ offline thì **đóng bớt trình duyệt/ứng dụng nặng**.
+
+**Các lựa chọn tăng tốc offline (có số đo):**
+
+| Cách | Kết quả đo | Kết luận |
+|---|---|---|
+| Đóng ứng dụng khác | NMT 3.5s → **1.1s** (3x) | ✅ **nên làm ngay**, miễn phí |
+| `NMT_INT8=1` (int8 dynamic) | NMT 3006 → **1870ms** (1.6x); câu dài 5068 → **2711ms** (1.9x) | ⚠️ **KHÔNG khuyến nghị**: đã đo được câu dài ra rác `'...triển khai - " Tôi "'` |
+| `MAX_SEG=5` + `FINAL_SILENCE=0.5` | chốt câu sớm hơn ~0.3–0.5s | ✅ nên dùng nếu hay nói câu ngắn |
+| **Chuyển sang chế độ ONLINE (GPU)** | NMT **3.0s → 0.17s** (18x) | ✅ **cách duy nhất để thật sự nhanh** |
+
+**Lưu ý về câu dài:** `MAX_SEG=8` sẽ **cắt câu tại 8 giây** — nói liên tục quá 8s thì câu bị
+chặt giữa (ASR chỉ nghe được phần đầu). Người nói nên **ngắt câu 1–2 giây**, hoặc giảm
+`MAX_SEG` xuống 5 nếu muốn câu ngắn hơn.
+
+**Câu lặp lại là tức thì:** NMT có cache — nói lại câu cũ thì `nmt 0ms` (đã đo).
+
 ### Cách bật kiến trúc 2 (đã code sẵn, chỉ 1 biến môi trường)
 
 ```powershell

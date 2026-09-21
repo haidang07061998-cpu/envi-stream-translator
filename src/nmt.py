@@ -266,10 +266,15 @@ class NMTTranslator:
 
         try:
             n = os.cpu_count() or 4
-            # TORCH_THREADS: tu chinh so luong CPU cho NMT (may nhieu nhan co the tang).
-            # Mac dinh 8 - qua cao se tranh CPU voi ASR.
-            want = int(os.getenv("TORCH_THREADS", "0") or 0)
-            torch.set_num_threads(max(1, min(want or n, 8 if not want else 32)))
+            # So luong thread cho NMT. Do thuc te tren may 12 nhan:
+            #   4 thread  : 2930 ms/cau  <- NHANH NHAT
+            #   8 thread  : 3088 ms/cau
+            #   12 thread : 3116 ms/cau
+            # Nhieu thread hon KHONG nhanh hon (tranh CPU lam cham nhau), va trong
+            # pipeline that thi 4 thread con chua CPU cho ASR chay -> tong the nhanh hon.
+            # Ghi de bang TORCH_THREADS neu may khac.
+            want = int(os.getenv("TORCH_THREADS", "4") or 4)
+            torch.set_num_threads(max(1, min(want, n)))
             torch.set_num_interop_threads(1)
         except Exception:
             pass
@@ -535,19 +540,23 @@ class NMTTranslator:
         t = (t or "").strip()
         if not t:
             return ""
-        if len(t.split()) > 40 or len(t) > 300:
-            parts = [p for p in split_sentences_en(t) if p.strip()]
-            # Cau dai nhieu manh: gop thanh 1 batch -> nhanh hon dich tung manh
-            if len(parts) > 1 and self.is_vinai and self.ct2 is None:
-                try:
-                    outs = self._hf_vinai_batch(parts, beams)
-                    joined = " ".join(o for o in outs if o).strip()
-                    if joined:
-                        return self._post(joined)
-                except Exception:
-                    pass
+        # LUON tach cau roi GOP BATCH (khong chi khi cau dai).
+        # Do thuc te tren may nay: dich 3 cau theo batch nhanh gap ~1.9 lan so voi dich
+        # tung manh / dich ca doan dai (9364ms -> 5018ms). Truoc day chi batch khi cau
+        # > 40 tu nen bo sot hau het truong hop thuc te.
+        parts = [p for p in split_sentences_en(t) if p.strip()]
+        if len(parts) > 1 and self.is_vinai and self.ct2 is None:
+            try:
+                outs = self._hf_vinai_batch(parts, beams)
+                joined = " ".join(o for o in outs if o).strip()
+                if joined:
+                    return self._post(joined)
+            except Exception:
+                pass
+            # batch loi -> dich tung manh (khong de vo luong)
             outs = [self._translate_one(p, beams) for p in parts]
             return " ".join(o for o in outs if o).strip()
+        # chi 1 cau -> 1 lan generate (di tiep xuong duoi)
 
         if self.ct2 is not None and self.is_vinai:
             try:
