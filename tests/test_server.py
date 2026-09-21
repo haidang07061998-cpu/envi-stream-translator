@@ -8,6 +8,7 @@ cua WS stream (phong sai / sai PIN) - nhanh nay xay ra TRUOC khi tai model.
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -67,6 +68,35 @@ class TestServerHttp(unittest.TestCase):
         r = client.get("/static/mobile/sw.js")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.headers.get("service-worker-allowed"), "/")
+
+    # ---------------------------------------------------------------- QR / link
+    def test_qr_dung_host_tu_request_khi_khong_co_server_host(self):
+        """LOI THAT: khong dat SERVER_HOST (kieu Kaggle/Colab) -> link/QR tro vao
+        localhost:8000 -> dien thoai quet xong mo localhost CUA CHINH NO, khong vao duoc.
+        Phai lay host tu chinh request dang goi.
+        """
+        env = {k: v for k, v in os.environ.items() if k != "SERVER_HOST"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            j = client.post("/session/create", data={"topic": "t"}).json()
+            self.assertIn("testserver", j["link"],
+                          "phai dung host cua request, khong phai localhost:8000")
+            self.assertTrue(j["link"].endswith("/room/" + j["sid"]))
+
+    def test_server_host_duoc_uu_tien(self):
+        """Cac file .bat dat SERVER_HOST=http://<IP-LAN>:8000 -> QR phai dung IP LAN
+        (de dien thoai khac trong WiFi quet duoc, du nguoi mo trang la localhost)."""
+        with mock.patch.dict(os.environ, {"SERVER_HOST": "http://192.168.1.2:8000"},
+                             clear=False):
+            j = client.post("/session/create", data={"topic": "t"}).json()
+            self.assertTrue(j["link"].startswith("http://192.168.1.2:8000/room/"))
+
+    def test_qr_png_tra_anh_that(self):
+        sid = client.post("/session/create", data={"topic": "t"}).json()["sid"]
+        r = client.get(f"/session/{sid}/qr.png")
+        self.assertIn(r.status_code, (200, 503))     # 503 khi thieu qrcode
+        if r.status_code == 200:
+            self.assertEqual(r.headers["content-type"], "image/png")
+            self.assertEqual(r.content[:8], b"\x89PNG\r\n\x1a\n")
 
     # ---------------------------------------------------------------- sessions
     def test_tao_phong_va_doc_caption(self):

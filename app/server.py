@@ -315,14 +315,41 @@ def room_page(sid: str):
 
 
 # ====================================================================== sessions
+def _link_host(request: Request, form_host: str = "") -> str:
+    """Host dung de sinh link + ma QR.
+
+    Thu tu uu tien:
+      1. `host` do client gui len (form /session/create)
+      2. Bien moi truong SERVER_HOST  (cac file .bat dat = http://<IP-LAN>:8000)
+      3. Host cua CHINH request dang goi
+
+    Vi sao can buoc 3: neu server chay tren Kaggle/Colab (khong dat SERVER_HOST),
+    mac dinh cu la 'http://localhost:8000' -> ma QR se tro vao localhost, dien thoai
+    quet xong mo localhost CUA CHINH NO -> khong vao duoc phong. Lay tu request thi
+    QR luon dung voi cach nguoi dung dang truy cap.
+    """
+    if form_host:
+        return form_host.rstrip("/")
+    # doc bien moi truong SONG (khong dung DEFAULT.host vi gia tri do duoc chup
+    # luc import module -> neu doi SERVER_HOST sau do se bi cu)
+    v = (os.getenv("SERVER_HOST") or "").strip()
+    if v:
+        return v.rstrip("/")
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return DEFAULT.host.rstrip("/")
+
+
 @app.post("/session/create")
-def session_create(topic: str = Form(""), host: str = Form(""),
+def session_create(request: Request, topic: str = Form(""), host: str = Form(""),
                    pin: str = Form(""), mode: str = Form(""),
                    scenario: str = Form("event"), keywords: str = Form(""),
                    details: str = Form(""), terms: str = Form("")):
     from src import rooms
+    lhost = _link_host(request, host)
     sid = rooms.create_session(topic, pin=pin, mode=mode or DEFAULT.mode,
-                               host=host or DEFAULT.host)
+                               host=lhost)
     s = rooms.get_session(sid)
     # ngu canh ban dau (Saydi: Scenario Gallery + Meeting Details & Keywords + Dictionary)
     ctx = {"scenario": scenario or "event", "keywords": keywords or "",
@@ -330,8 +357,8 @@ def session_create(topic: str = Form(""), host: str = Form(""),
     with LIVE_LOCK:
         LIVE_CONTEXT[sid] = ctx
     STATS["sessions"] += 1
-    return {"sid": sid, "link": rooms.session_link(sid, host or DEFAULT.host),
-            "qr": rooms.session_qr(sid, host or DEFAULT.host),
+    return {"sid": sid, "link": rooms.session_link(sid, lhost),
+            "qr": rooms.session_qr(sid, lhost),
             "locked": bool((pin or "").strip()),
             "mode": s.get("mode", DEFAULT.mode) if s else DEFAULT.mode,
             "scenario": scenario or "event"}
@@ -441,11 +468,13 @@ def session_export(sid: str, request: Request, format: str = "txt",
 
 
 @app.get("/session/{sid}/qr.png")
-def session_qr_png(sid: str):
+def session_qr_png(sid: str, request: Request):
     from src import rooms
     if rooms.get_session(sid) is None:
         raise HTTPException(status_code=404, detail="Khong tim thay phong")
-    png = rooms.session_qr_png(sid, DEFAULT.host)
+    # dung _link_host: uu tien SERVER_HOST, neu khong co thi lay tu request
+    # (truoc day luon dung DEFAULT.host -> tren Kaggle se sinh QR tro vao localhost)
+    png = rooms.session_qr_png(sid, _link_host(request))
     if not png:
         raise HTTPException(status_code=503,
                             detail="Thieu thu vien qrcode (pip install qrcode[pil])")
